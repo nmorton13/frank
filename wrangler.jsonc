@@ -38,13 +38,13 @@
     "CLEANUP_BATCH_SIZE": "20",
     "DELETED_WORKSPACE_RETENTION_DAYS": "30",
     "EMAIL_ENABLED": "true",
-    "EMAIL_FROM": "no-reply@frank.asterio.io",
-    "APP_ORIGIN": "https://frank.asterio.io"
+    "EMAIL_FROM": "no-reply@frankagent.dev",
+    "APP_ORIGIN": "https://frankagent.dev"
   },
   "send_email": [
     {
       "name": "EMAIL",
-      "allowed_sender_addresses": ["no-reply@frank.asterio.io"]
+      "allowed_sender_addresses": ["no-reply@frankagent.dev"]
     }
   ],
   "assets": {

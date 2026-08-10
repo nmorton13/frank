@@ -3,7 +3,7 @@
 # Workspace-scoped, agent-authenticated, idempotent writes.
 #
 # Requires:
-#   FRANK_CLOUD_BASE   e.g. https://frank.asterio.io
+#   FRANK_CLOUD_BASE   e.g. https://frankagent.dev
 #   FRANK_CLOUD_WS     workspace id, e.g. wsp_...
 #   FRANK_CLOUD_TOKEN  agent credential token, e.g. frank_agent_...
 #
