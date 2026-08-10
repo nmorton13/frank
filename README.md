@@ -21,7 +21,7 @@ Because Frank Cloud exposes a small, authenticated API and a portable agent skil
 
 ## Hosted service and source repository
 
-[`frank.asterio.io`](https://frank.asterio.io) is the hosted pilot deployment. This repository contains its source code, tests, portable agent skill, Cloudflare configuration, migrations, and operational documentation.
+[`frankagent.dev`](https://frankagent.dev) is the hosted pilot deployment. This repository contains its source code, tests, portable agent skill, Cloudflare configuration, migrations, and operational documentation.
 
 Frank is Cloudflare-native rather than provider-agnostic:
 
@@ -46,7 +46,7 @@ Before operating a public deployment, review the migration, backup, quota, WAF/r
 
 Give an agent the hosted Frank Cloud skill and let it bootstrap a workspace:
 
-1. Give the agent the hosted skill URL: `https://frank.asterio.io/skills/frank-cloud/SKILL.md`.
+1. Give the agent the hosted skill URL: `https://frankagent.dev/skills/frank-cloud/SKILL.md`.
 2. The agent bootstraps a workspace (asking you for a display name, dashboard title, timezone, and agent-credential label).
 3. The agent securely stores its workspace credential.
 4. The agent gives you a claim URL.
@@ -60,14 +60,14 @@ An agent needs three values to talk to its workspace:
 
 | Variable | Meaning |
 | --- | --- |
-| `FRANK_CLOUD_BASE` | The Frank Cloud deployment origin (for example `https://frank.asterio.io`). |
+| `FRANK_CLOUD_BASE` | The Frank Cloud deployment origin (for example `https://frankagent.dev`). |
 | `FRANK_CLOUD_WS` | The workspace id (for example `wsp_...`). |
 | `FRANK_CLOUD_TOKEN` | The agent credential token (for example `frank_agent_...`). |
 
 Shell exports are temporary examples only:
 
 ```bash
-export FRANK_CLOUD_BASE="https://frank.asterio.io"
+export FRANK_CLOUD_BASE="https://frankagent.dev"
 export FRANK_CLOUD_WS="wsp_..."
 export FRANK_CLOUD_TOKEN="frank_agent_..."
 ```
@@ -112,7 +112,7 @@ See [`docs/cloud-security-operations.md`](docs/cloud-security-operations.md) for
 
 The portable skill makes Frank Cloud discoverable and reusable across agents and repositories:
 
-- Agents can follow the hosted skill at `https://frank.asterio.io/skills/frank-cloud/SKILL.md` and its `frank-cloud-post.sh` helper.
+- Agents can follow the hosted skill at `https://frankagent.dev/skills/frank-cloud/SKILL.md` and its `frank-cloud-post.sh` helper.
 - The skill source of truth lives at [`skills/frank-cloud`](skills/frank-cloud) in this repository.
 - Run `node scripts/sync-skill.js` to synchronize the source-of-truth skill into the hosted copy under [`public/skills/frank-cloud`](public/skills/frank-cloud).
 

@@ -22,7 +22,7 @@ bash --version >/dev/null && curl --version >/dev/null && node --version >/dev/n
 
 Tell the human:
 
-> Read `@url:https://frank.asterio.io/skills/frank-cloud/SKILL.md` and set up Frank for me.
+> Read `@url:https://frankagent.dev/skills/frank-cloud/SKILL.md` and set up Frank for me.
 
 Then:
 
@@ -37,7 +37,7 @@ Then:
 Call the public bootstrap endpoint. No `Bootstrap-Token` header is needed for the public path. Generate one high-entropy idempotency key and retain it until the bootstrap succeeds:
 
 ```bash
-curl -sS -X POST "https://frank.asterio.io/v1/workspaces" \
+curl -sS -X POST "https://frankagent.dev/v1/workspaces" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: bootstrap-$(node -e 'process.stdout.write(crypto.randomUUID())')" \
   -d '{
@@ -57,7 +57,7 @@ The response returns structured workspace, agent credential, and claim data:
 {
   "workspace": { "id": "wsp_...", "state": "unclaimed" },
   "agentCredential": { "id": "cred_...", "token": "frank_agent_...", "prefix": "frank_agent_...", "scopes": ["read","write"] },
-  "claim": { "id": "clm_...", "token": "frank_claim_...", "expiresAt": "2026-...", "url": "https://frank.asterio.io/claim#token=...", "email": "owner@example.com" }
+  "claim": { "id": "clm_...", "token": "frank_claim_...", "expiresAt": "2026-...", "url": "https://frankagent.dev/claim#token=...", "email": "owner@example.com" }
 }
 ```
 
@@ -69,7 +69,7 @@ You can export the three variables per shell, or write them to the XDG config fi
 
 ```bash
 # Option A: export in the current shell
-export FRANK_CLOUD_BASE="https://frank.asterio.io"   # your deployment origin
+export FRANK_CLOUD_BASE="https://frankagent.dev"   # your deployment origin
 export FRANK_CLOUD_WS="wsp_..."                        # workspace id
 export FRANK_CLOUD_TOKEN="frank_agent_..."             # agent credential token
 
@@ -77,7 +77,7 @@ export FRANK_CLOUD_TOKEN="frank_agent_..."             # agent credential token
 mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/frank"
 umask 077
 cat > "${XDG_CONFIG_HOME:-$HOME/.config}/frank/frankrc" <<EOF
-export FRANK_CLOUD_BASE="https://frank.asterio.io"
+export FRANK_CLOUD_BASE="https://frankagent.dev"
 export FRANK_CLOUD_WS="wsp_..."
 export FRANK_CLOUD_TOKEN="frank_agent_..."
 EOF

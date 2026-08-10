@@ -33,7 +33,7 @@ The `test:helper` suite (`node tests/frank-cloud-helper.test.js`) already boots 
 Set the base URL for the Frank Cloud deployment being checked:
 
 ```bash
-export FRANK_CLOUD_BASE="https://frank.asterio.io"
+export FRANK_CLOUD_BASE="https://frankagent.dev"
 ```
 
 Check the health endpoint and the hosted skill:

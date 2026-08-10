@@ -47,7 +47,7 @@ export default defineConfig({
             CLEANUP_BATCH_SIZE: "100",
             DELETED_WORKSPACE_RETENTION_DAYS: "30",
             EMAIL_ENABLED: "true",
-            EMAIL_FROM: "no-reply@frank.asterio.io",
+            EMAIL_FROM: "no-reply@frankagent.dev",
             APP_ORIGIN: "https://frank.test",
           },
         },

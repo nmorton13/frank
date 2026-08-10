@@ -34,8 +34,8 @@ interface __BaseEnv_Env {
 	CLEANUP_BATCH_SIZE: "20";
 	DELETED_WORKSPACE_RETENTION_DAYS: "30";
 	EMAIL_ENABLED: "true";
-	EMAIL_FROM: "no-reply@frank.asterio.io";
-	APP_ORIGIN: "https://frank.asterio.io";
+	EMAIL_FROM: "no-reply@frankagent.dev";
+	APP_ORIGIN: "https://frankagent.dev";
 	WORKSPACES: DurableObjectNamespace<import("./src/cloud/index").Workspace>;
 }
 declare namespace Cloudflare {

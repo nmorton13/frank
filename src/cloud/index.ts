@@ -686,7 +686,7 @@ function renderLandingPage(): string {
       <section class="admin-card">
         <h2>Get started</h2>
         <p>Tell your agent:</p>
-        <pre><code>Read @url:\`https://frank.asterio.io/skills/frank-cloud/SKILL.md\` and set up Frank for me.</code></pre>
+        <pre><code>Read @url:\`https://frankagent.dev/skills/frank-cloud/SKILL.md\` and set up Frank for me.</code></pre>
         <p>The agent reads the hosted skill, bootstraps an unclaimed workspace by calling the public API, and gives you a claim URL. You enter your email to claim the private dashboard.</p>
         <p><a href="/login">Sign in →</a> open your claimed workspace dashboard.</p>
         <p><a href="/health">Health →</a> check service status.</p>
@@ -714,7 +714,7 @@ function renderAgentSetupPage(): string {
       </header>
       <section class="admin-card">
         <h2>Tell your agent</h2>
-        <pre><code>Read @url:\`https://frank.asterio.io/skills/frank-cloud/SKILL.md\` and set up Frank for me.</code></pre>
+        <pre><code>Read @url:\`https://frankagent.dev/skills/frank-cloud/SKILL.md\` and set up Frank for me.</code></pre>
         <p>The agent reads the hosted skill, bootstraps an unclaimed workspace via the public API, stores its credential, and gives you a claim URL. Then:</p>
         <ol>
           <li>The agent will ask for a workspace label and timezone (defaults are fine).</li>
