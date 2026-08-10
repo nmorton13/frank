@@ -70,20 +70,37 @@ These are account/dashboard actions and are deliberately **not configured by thi
 - [ ] Review sampled logs without recording authorization headers, cookies, email bodies, or URL fragments.
 - [ ] Test restoration and D1 backup procedures before schema migrations.
 
+## Deployment identifiers
+
+This document is generic; commands that touch Cloudflare state use the D1
+database **binding name** in place of an account-specific value. In the hosted
+pilot, the binding is `frank-cloud-directory` (matched in `wrangler.jsonc` by
+`binding: "DIRECTORY"`). Substitute your own D1 binding name when operating
+another deployment. Wherever a code block below shows a command with a literal
+database name, replace it with your binding. For convenience, set it once and
+reuse in a shell:
+
+```bash
+export FRANK_D1="frank-cloud-directory"   # your D1 binding name
+```
+
+All other options, `vars`, quota ceilings, secret names (`BOOTSTRAP_TOKEN`,
+`EMAIL_*`), and the edge/billing procedures below are deployment-agnostic.
+
 ## D1 backup and recovery
 
 Before a remote migration, create an operator-local SQL export and record the current Time Travel bookmark:
 
 ```bash
 mkdir -p .tmp/backups
-npx wrangler d1 export frank-cloud-directory --remote --output .tmp/backups/frank-cloud-directory-before-0006.sql
-npx wrangler d1 time-travel info frank-cloud-directory
+npx wrangler d1 export "$FRANK_D1" --remote --output ".tmp/backups/${FRANK_D1}-before-$FRANK_MIGRATION.sql"
+npx wrangler d1 time-travel info "$FRANK_D1"
 ```
 
 Keep the export private and capture the full `time-travel info` output in the incident/deployment record. To restore by bookmark:
 
 ```bash
-npx wrangler d1 time-travel restore frank-cloud-directory --bookmark=<bookmark>
+npx wrangler d1 time-travel restore "$FRANK_D1" --bookmark=<bookmark>
 ```
 
 A restore is destructive, overwrites database state, and cancels in-flight queries and transactions. Time Travel retention depends on the Cloudflare plan, so confirm the available bookmark before migration. See Cloudflare's official [D1 import/export documentation](https://developers.cloudflare.com/d1/best-practices/import-export-data/) and [Time Travel documentation](https://developers.cloudflare.com/d1/reference/time-travel/).
@@ -95,28 +112,41 @@ Live quota reconciliation is upward-only so cleanup cannot erase a bootstrap res
 Inspect counters and their authoritative lower bounds with remote D1 queries:
 
 ```bash
-npx wrangler d1 execute frank-cloud-directory --remote --command \
+npx wrangler d1 execute "$FRANK_D1" --remote --command \
   "SELECT bucket, count FROM bootstrap_quota WHERE bucket IN ('live','live:public') ORDER BY bucket"
-npx wrangler d1 execute frank-cloud-directory --remote --command \
+npx wrangler d1 execute "$FRANK_D1" --remote --command \
   "SELECT state, bootstrap_mode, COUNT(*) AS count FROM workspaces GROUP BY state, bootstrap_mode ORDER BY state, bootstrap_mode"
-npx wrangler d1 execute frank-cloud-directory --remote --command \
+npx wrangler d1 execute "$FRANK_D1" --remote --command \
   "SELECT bootstrap_mode, COUNT(*) AS count FROM bootstrap_idempotency WHERE status='pending' AND quota_reserved=1 AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id=bootstrap_idempotency.workspace_id) GROUP BY bootstrap_mode"
 ```
 
 Only repair downward during an incident window: first set both bootstrap hourly ceilings to `0` (or block `POST /v1/workspaces` at the edge), wait for in-flight requests to finish, take the D1 export/bookmark above, then recompute the fixed rows:
 
 ```bash
-npx wrangler d1 execute frank-cloud-directory --remote --command \
+npx wrangler d1 execute "$FRANK_D1" --remote --command \
   "UPDATE bootstrap_quota SET count=(SELECT COUNT(*) FROM workspaces WHERE state IN ('unclaimed','active'))+(SELECT COUNT(*) FROM bootstrap_idempotency bi WHERE bi.status='pending' AND bi.quota_reserved=1 AND bi.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id=bi.workspace_id)) WHERE bucket='live'; UPDATE bootstrap_quota SET count=(SELECT COUNT(*) FROM workspaces WHERE state IN ('unclaimed','active') AND bootstrap_mode='public')+(SELECT COUNT(*) FROM bootstrap_idempotency bi WHERE bi.status='pending' AND bi.quota_reserved=1 AND bi.bootstrap_mode='public' AND bi.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id=bi.workspace_id)) WHERE bucket='live:public'"
 ```
 
 Re-enable bootstrap only after re-running the diagnostic queries. Never force counters downward while creation traffic is allowed.
 
+## Bootstrap token (`BOOTSTRAP_TOKEN`)
+
+`BOOTSTRAP_TOKEN` is the operator secret that authorizes the `Bootstrap-Token` header for creating workspaces. Provision it as a Cloudflare secret (never a plaintext `vars` entry), and use at least 128 bits of entropy (for example `openssl rand -hex 32`, which is 256 bits). A weak token (e.g. 32 bits) is unnecessary exposure: a distributed client could brute-force operator-mode creation, though the global 10/hour and live-100 circuits still bound the outcome.
+
+It is **not** part of authentication for workspaces that already exist. Agent credentials, claim/verification/login tokens, and browser sessions are random values stored as plain SHA-256 hashes and verified against that literal value; they do not depend on `BOOTSTRAP_TOKEN`. Rotating it therefore does **not** revoke or lose access to any issued credential, session, or workspace.
+
+Rotation side effects (all benign):
+
+- Pending bootstrap idempotency replays are invalidated: a client retrying the same `Idempotency-Key` within the 30-minute claim window gets a new key and a fresh cryptographic login. Re-issue by having the agent bootstrap with a new key.
+- Client-IP and email rate-limit hash buckets re-key, so their counters reset (harmless; the global circuits are unaffected).
+
+Rotate any time with `npx wrangler secret put BOOTSTRAP_TOKEN`; secrets take effect immediately and need no redeploy.
+
 ## Deployment sequence
 
 1. Export remote D1 and record a Time Travel bookmark using the procedure above.
 2. Apply migrations through `0006_abuse_controls.sql` in numeric order.
-3. Verify `BOOTSTRAP_TOKEN` remains a Cloudflare secret, not a Wrangler plaintext variable.
+3. Verify `BOOTSTRAP_TOKEN` remains a Cloudflare secret, not a Wrangler plaintext variable, and is at least 128 bits.
 4. Run `npm run typecheck`, `npm test`, `npm audit --omit=dev`, and `npm run cf:check`.
 5. Configure the manual edge and billing controls above.
 6. Deploy only after reviewing the configured limits for expected pilot traffic.
