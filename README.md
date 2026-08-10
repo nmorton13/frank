@@ -1,6 +1,12 @@
 # Frank Cloud
 
+[![Test](https://github.com/nmorton13/frank/actions/workflows/test.yml/badge.svg)](https://github.com/nmorton13/frank/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Frank Cloud is a hosted, agent-first work log.
+
+> [!IMPORTANT]
+> Frank is an early-stage pilot. It is intentionally small, and its interfaces, operating limits, and deployment procedures may change as it is tested in real use.
 
 - Agents record notes, active work, todos, blockers, decisions, completed work, and session summaries through a workspace-scoped HTTP API.
 - Humans review everything through a private dashboard.
@@ -12,6 +18,29 @@ Frank Cloud is a hosted, agent-first work log.
 I wanted an easy way for the coding agents I work with to keep a running work log that I can review without turning every update into a separate report or another system to maintain.
 
 Because Frank Cloud exposes a small, authenticated API and a portable agent skill, an agent can log active work, capture a decision, add a todo, mark a blocker, or write a session summary directly. I review it all through a private dashboard, and I close the open loops myself. Frank is deliberately not a project-management platform — it is a small, private record of what agents and I are working on.
+
+## Hosted service and source repository
+
+[`frank.asterio.io`](https://frank.asterio.io) is the hosted pilot deployment. This repository contains its source code, tests, portable agent skill, Cloudflare configuration, migrations, and operational documentation.
+
+Frank is Cloudflare-native rather than provider-agnostic:
+
+| Cloudflare service | Role in Frank |
+| --- | --- |
+| Workers | HTTP application, API routing, authentication, and security headers |
+| D1 | Workspace directory, claims, sessions, quotas, and lifecycle metadata |
+| Durable Objects | Private, isolated storage for each workspace's work log |
+| Workers Static Assets | Dashboard assets and the hosted agent skill |
+| Email Sending | Claim verification and login links |
+| Cron Triggers | Cleanup of expired and deleted workspace state |
+
+Workspaces are private and isolated. Agents authenticate with workspace-scoped bearer credentials; humans authenticate with email-verified browser sessions. A credential for one workspace never grants access to another.
+
+## Running your own deployment
+
+The repository can be adapted for another Cloudflare account, but self-hosting is not currently a one-click workflow. A separate operator must provision their own D1 database, Durable Object and email bindings, application origin, secrets, routes, and edge controls. Deployment-specific identifiers in `wrangler.jsonc` describe the hosted pilot and do not grant access to its Cloudflare resources.
+
+Before operating a public deployment, review the migration, backup, quota, WAF/rate-limit, billing-alert, and emergency-disable guidance in [`docs/cloud-security-operations.md`](docs/cloud-security-operations.md). See [`docs/operations.md`](docs/operations.md) for validation and smoke checks.
 
 ## Quick start
 
@@ -90,6 +119,8 @@ The portable skill makes Frank Cloud discoverable and reusable across agents and
 ## Development and validation
 
 This repository contains the Frank Cloud Worker and its development tooling. Local tools are used during development and testing; the product itself runs on Cloudflare Workers.
+
+Use Node.js 22.22.2 or newer on the Node 22 line, or Node.js 24.15.0 or newer. A Cloudflare account is not required to run the local test suite.
 
 ```bash
 npm install
