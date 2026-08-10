@@ -1,0 +1,168 @@
+{
+  "project": {
+    "name": "Example Portal",
+    "aliases": [
+      "portal",
+      "dashboardPortal"
+    ],
+    "rawAlias": "example-portal"
+  },
+  "entries": [
+    {
+      "key": "status",
+      "type": "status",
+      "text": "Shipping the compatibility slice",
+      "project": "portal",
+      "tags": [
+        "cloud"
+      ]
+    },
+    {
+      "key": "activeFirst",
+      "type": "active",
+      "text": "First active pass",
+      "project": "example_portal"
+    },
+    {
+      "key": "activeReplacement",
+      "type": "active",
+      "text": "Second active pass",
+      "project": "example-portal"
+    },
+    {
+      "key": "activeOther",
+      "type": "active",
+      "text": "Investigating backup health",
+      "project": "AcmeBackup"
+    },
+    {
+      "key": "note",
+      "type": "note",
+      "text": "Keep the raw project spelling",
+      "project": "example_portal"
+    },
+    {
+      "key": "todo",
+      "type": "todo",
+      "text": "Write compatibility fixtures",
+      "title": "Fixture coverage",
+      "project": "portal",
+      "tags": [
+        "tests"
+      ]
+    },
+    {
+      "key": "blocker",
+      "type": "blocker",
+      "text": "Waiting for fixture review",
+      "project": "example-portal"
+    },
+    {
+      "key": "done",
+      "type": "done",
+      "text": "Mapped local semantics",
+      "project": "portal"
+    },
+    {
+      "key": "decision",
+      "type": "decision",
+      "text": "Keep deterministic summaries",
+      "project": "example_portal"
+    },
+    {
+      "key": "session",
+      "type": "session",
+      "text": "Ported the compatibility core",
+      "title": "Phase 2 session",
+      "project": "example-portal",
+      "tags": [
+        "agent"
+      ],
+      "structuredJson": {
+        "done": [
+          "fixture inventory"
+        ],
+        "todos": [
+          "run validation"
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "entryTypes": [
+      "status",
+      "active",
+      "note",
+      "todo",
+      "blocker",
+      "done",
+      "decision",
+      "session"
+    ],
+    "currentStatusKey": "status",
+    "openActiveKeys": [
+      "activeOther",
+      "activeReplacement"
+    ],
+    "replacedActiveClosedAt": null,
+    "activeProjects": [
+      {
+        "name": "Example Portal",
+        "count": 9,
+        "lastType": "session",
+        "lastText": "Ported the compatibility core"
+      },
+      {
+        "name": "AcmeBackup",
+        "count": 1,
+        "lastType": "active",
+        "lastText": "Investigating backup health"
+      }
+    ],
+    "openLoopKeys": [
+      "blocker",
+      "todo"
+    ],
+    "recentKeys": [
+      "session",
+      "decision",
+      "done",
+      "blocker",
+      "todo",
+      "note",
+      "activeOther",
+      "activeReplacement",
+      "activeFirst",
+      "status"
+    ],
+    "projectHistoryKeys": [
+      "session",
+      "decision",
+      "done",
+      "blocker",
+      "todo",
+      "note",
+      "activeReplacement",
+      "activeFirst",
+      "status"
+    ],
+    "summarySectionHeadings": [
+      "## Current status updates",
+      "## Active work updates",
+      "## Done",
+      "## Decisions",
+      "## Blockers",
+      "## Todos added",
+      "## Session summaries",
+      "## Notes"
+    ],
+    "summaryFragments": [
+      "Project: Example Portal — Shipping the compatibility slice (#cloud)",
+      "Project: Example Portal — Fixture coverage: Write compatibility fixtures (#tests)",
+      "Project: Example Portal — Phase 2 session: Ported the compatibility core (#agent)",
+      "Project: AcmeBackup — Investigating backup health"
+    ],
+    "doneCountAfterCompletion": 3,
+    "summaryBody": "# Frank Daily Work Summary - {{date}}\n\n## Current status updates\n- Project: Example Portal — Shipping the compatibility slice (#cloud)\n\n## Active work updates\n- Project: Example Portal — First active pass\n- Project: Example Portal — Second active pass\n- Project: AcmeBackup — Investigating backup health\n\n## Done\n- Project: Example Portal — Mapped local semantics\n- Project: Example Portal — Waiting for fixture review\n- Project: Example Portal — Fixture coverage: Write compatibility fixtures (#tests)\n\n## Decisions\n- Project: Example Portal — Keep deterministic summaries\n\n## Blockers\n- Project: Example Portal — Waiting for fixture review\n\n## Todos added\n- Project: Example Portal — Fixture coverage: Write compatibility fixtures (#tests)\n\n## Session summaries\n- Project: Example Portal — Phase 2 session: Ported the compatibility core (#agent)\n\n## Notes\n- Project: Example Portal — Keep the raw project spelling\n"
+  }
+}

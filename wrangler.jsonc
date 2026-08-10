@@ -1,0 +1,80 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "frank-cloud",
+  "main": "src/cloud/index.ts",
+  "compatibility_date": "2026-08-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.01
+  },
+  "vars": {
+    "BOOTSTRAP_QUOTA_PER_HOUR": "10",
+    "BOOTSTRAP_PUBLIC_QUOTA_PER_HOUR": "5",
+    "BOOTSTRAP_TOTAL_CEILING": "100",
+    "BOOTSTRAP_CLIENT_CEILING": "5",
+    "BOOTSTRAP_PUBLIC_TOTAL_CEILING": "80",
+    "LOGIN_CLIENT_CEILING": "20",
+    "LOGIN_GLOBAL_CEILING": "200",
+    "CLAIM_CLIENT_CEILING": "20",
+    "CLAIM_GLOBAL_CEILING": "200",
+    "EMAIL_RECIPIENT_CEILING": "3",
+    "EMAIL_GLOBAL_CEILING": "50",
+    "AGENT_CREDENTIAL_MINUTE_CEILING": "120",
+    "HUMAN_SESSION_MINUTE_CEILING": "120",
+    "WORKSPACE_MINUTE_CEILING": "240",
+    "WORKSPACE_WRITE_HOUR_CEILING": "1000",
+    "USER_WORKSPACE_CEILING": "5",
+    "WORKSPACE_ENTRY_CEILING": "10000",
+    "WORKSPACE_PROJECT_CEILING": "1000",
+    "WORKSPACE_ALIAS_CEILING": "20000",
+    "WORKSPACE_PROJECT_EVENT_CEILING": "10000",
+    "SUMMARY_ENTRY_CEILING": "200",
+    "COLLECTION_RESPONSE_BYTE_CEILING": "524288",
+    "SUMMARY_OUTPUT_BYTE_CEILING": "262144",
+    "SUMMARY_RESPONSE_BYTE_CEILING": "524288",
+    "EXPORT_ENTRY_CEILING": "100",
+    "EXPORT_RESPONSE_BYTE_CEILING": "1048576",
+    "CLEANUP_BATCH_SIZE": "20",
+    "DELETED_WORKSPACE_RETENTION_DAYS": "30",
+    "EMAIL_ENABLED": "true",
+    "EMAIL_FROM": "no-reply@frank.asterio.io",
+    "APP_ORIGIN": "https://frank.asterio.io"
+  },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["no-reply@frank.asterio.io"]
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DIRECTORY",
+      "database_name": "frank-cloud-directory",
+      "database_id": "9670762a-4ce3-4e5a-9bc8-8eb8d420d945",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORKSPACES",
+        "class_name": "Workspace"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Workspace"]
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}

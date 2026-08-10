@@ -1,0 +1,45 @@
+{
+  "name": "frank",
+  "version": "0.1.0",
+  "description": "Frank Cloud: a hosted, agent-first work log on Cloudflare Workers",
+  "type": "commonjs",
+  "files": [
+    "src/cloud/",
+    "migrations/",
+    "public/",
+    "skills/frank-cloud/",
+    "scripts/",
+    "docs/",
+    "!docs/plans/",
+    "wrangler.jsonc",
+    "tsconfig.json",
+    "vitest.config.mts",
+    "vitest.dom.config.mts",
+    "worker-configuration.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev:cloud": "wrangler dev --local",
+    "test": "npm run test:cloud && npm run test:dom && npm run test:helper && npm run test:skill-sync",
+    "test:cloud": "vitest run",
+    "test:dom": "vitest run --config vitest.dom.config.mts",
+    "test:helper": "node tests/frank-cloud-helper.test.js",
+    "test:skill-sync": "node scripts/sync-skill.js check",
+    "typecheck": "tsc --noEmit",
+    "cf:types": "wrangler types",
+    "cf:check": "wrangler deploy --dry-run --outdir .tmp/worker-build"
+  },
+  "engines": {
+    "node": "^22.22.2 || >=24.15.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.20.3",
+    "@types/node": "^26.2.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
+  }
+}
