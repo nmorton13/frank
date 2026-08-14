@@ -38,6 +38,7 @@ Usage:
   frank-cloud-post.sh project inactive <project>
   frank-cloud-post.sh remote-check
   frank-cloud-post.sh self-test
+  frank-cloud-post.sh skill-update   # fetch the latest hosted skill + helper
 
 For bootstrap: only FRANK_CLOUD_BASE is required.
 For all other commands: FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN must be set.
@@ -140,6 +141,88 @@ api_post() {
     -d @- \
     "${BASE}/v1/workspaces/${WS}${path}"
 }
+
+# --- Skill self-update (pull-based, non-blocking) ---
+# The installed skill can go stale. On writes, check the hosted skill version
+# at most once per day (cached locally) and print a non-blocking notice to
+# stderr if a newer version is available. The agent/human can then run
+# `skill-update` to refresh. This never blocks or fails a write.
+SKILL_VERSION="2.1.0"
+SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
+SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
+
+# Resolve this helper's own directory (works whether invoked by path or via $PATH).
+_skill_dir() {
+  local self="$0"
+  if [[ "$self" == /* ]]; then
+    dirname "$self"
+  else
+    local found
+    found="$(command -v "$self" 2>/dev/null || true)"
+    if [[ -n "$found" ]]; then dirname "$found"; else dirname "$self"; fi
+  fi
+}
+
+# Fetch the hosted skill version string (e.g. "2.1.0") or empty on failure.
+_hosted_skill_version() {
+  curl -fsS --max-time 10 "${BASE}/skills/frank-cloud/SKILL.md" 2>/dev/null \
+    | sed -n 's/^version:[[:space:]]*//p' | head -1
+}
+
+# Print a non-blocking update notice to stderr if the hosted skill is newer.
+maybe_check_skill_update() {
+  case "$TYPE" in
+    bootstrap|remote-check|self-test|skill-update) return 0 ;;
+  esac
+  local now last
+  now="$(date +%s)"
+  last="$(cat "$SKILL_CACHE" 2>/dev/null || echo 0)"
+  if (( now - last < SKILL_UPDATE_INTERVAL_SECONDS )); then return 0; fi
+  printf '%s' "$now" > "$SKILL_CACHE" 2>/dev/null || true
+  local hosted
+  hosted="$(_hosted_skill_version)"
+  [[ -n "$hosted" ]] || return 0
+  if [[ "$hosted" != "$SKILL_VERSION" ]]; then
+    printf 'frank-cloud: a newer skill version (%s) is available (installed %s).\n' "$hosted" "$SKILL_VERSION" >&2
+    printf 'frank-cloud: run `frank-cloud-post.sh skill-update` to refresh, or ask your agent to update.\n' >&2
+  fi
+}
+
+# Fetch the latest hosted skill + helper and overwrite the local copies.
+skill_update() {
+  local dir
+  dir="$(_skill_dir)"
+  local tmp_skill tmp_helper
+  tmp_skill="$(mktemp)"
+  tmp_helper="$(mktemp)"
+  # Clean up temp files on exit. Use a fixed trap that doesn't reference
+  # locals (which are unset by the time EXIT runs under `set -u`).
+  trap 'rm -f "${FRANK_TMP_SKILL:-}" "${FRANK_TMP_HELPER:-}"' EXIT
+  FRANK_TMP_SKILL="$tmp_skill"
+  FRANK_TMP_HELPER="$tmp_helper"
+  if ! curl -fsS --max-time 20 "${BASE}/skills/frank-cloud/SKILL.md" -o "$tmp_skill"; then
+    echo "frank-cloud: failed to fetch hosted SKILL.md" >&2
+    return 1
+  fi
+  if ! curl -fsS --max-time 20 "${BASE}/skills/frank-cloud/frank-cloud-post.sh" -o "$tmp_helper"; then
+    echo "frank-cloud: failed to fetch hosted helper" >&2
+    return 1
+  fi
+  if ! head -1 "$tmp_helper" | grep -q '^#!/usr/bin/env bash'; then
+    echo "frank-cloud: refusing to install a helper that is not a bash script" >&2
+    return 1
+  fi
+  cp "$tmp_skill" "$dir/SKILL.md"
+  cp "$tmp_helper" "$dir/frank-cloud-post.sh"
+  chmod +x "$dir/frank-cloud-post.sh"
+  rm -f "$SKILL_CACHE"
+  echo "frank-cloud: skill updated to $(sed -n 's/^version:[[:space:]]*//p' "$dir/SKILL.md" | head -1)"
+}
+
+if [[ "$TYPE" == "skill-update" ]]; then
+  skill_update
+  exit 0
+fi
 
 if [[ "$TYPE" == "remote-check" ]]; then
   curl -fsS "${BASE}/health" >/dev/null
@@ -276,6 +359,9 @@ case "$TYPE" in
   note|status|active|todo|blocker|done|decision|session) ;;
   *) usage; exit 2 ;;
 esac
+
+# Non-blocking daily skill-update notice (stderr only; never fails the write).
+maybe_check_skill_update
 
 api_post "/entries" "$(json_entry_payload "$TYPE" "$TEXT" "$PROJECT" "$@")"
 printf '\n'
