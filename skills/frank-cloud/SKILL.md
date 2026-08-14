@@ -112,7 +112,7 @@ Rules:
 - Do not duplicate a todo/blocker as a note.
 - Use `decision` for choices worth preserving.
 - Use `session` for a concise summary, not a transcript.
-- **Agents cannot close loops.** Closing a todo/blocker is a human action (same-origin browser session). Agents create the loop; the human checks it off in the dashboard.
+- **Agents can close loops.** Any agent credential with `write` scope can close any open todo/blocker in the workspace (human- or agent-opened) via the close endpoint. The audit trail records which agent closed it. Humans can also close loops from the dashboard.
 
 ## Helper usage
 
@@ -134,6 +134,9 @@ frank-cloud-post.sh list --type todo --project "Project Name"
 frank-cloud-post.sh projects
 frank-cloud-post.sh history "Project Name"
 frank-cloud-post.sh summary today
+
+# Close a loop (agents can close any open todo/blocker)
+frank-cloud-post.sh close <entry-id>
 
 # Project lifecycle (only when asked to clean up project names)
 frank-cloud-post.sh project rename "Old Name" "New Name"
@@ -185,6 +188,7 @@ POST /v1/workspaces/{ws}/projects/rename         {nameOrAlias, newName}
 POST /v1/workspaces/{ws}/projects/merge          {fromNameOrAlias, toNameOrAlias}
 POST /v1/workspaces/{ws}/projects/archive        {nameOrAlias}
 POST /v1/workspaces/{ws}/projects/inactive       {nameOrAlias}
+PATCH /v1/workspaces/{ws}/entries/{id}/close      close an open todo/blocker (agent bearer or human session)
 ```
 
 Example direct write:
@@ -266,13 +270,14 @@ The response returns workspace, credential, and claim URL. The same key and payl
 
 Each workspace is private and isolated. One person's workspace cannot be read by another.
 
-## The three URLs and how access works
+## The four URLs and how access works
 
-Frank uses three URL types. Do not confuse them, and never pass a capability URL to a third party:
+Frank uses four URL types. Do not confuse them, and never pass a capability URL to a third party:
 
 1. **Dashboard URL** (`/w/{workspaceId}`) — reusable and bookmarkable. The URL itself does **not** grant access; it only opens the dashboard when the browser already has a valid, authenticated session for that workspace. Sharing the dashboard URL alone does not expose workspace data.
 2. **Login magic link** — short-lived, single-use, sent by email. Whoever redeems an unused link first receives a browser session. It must not be shared or forwarded before use; it currently expires after 20 minutes.
 3. **Initial claim link** — temporary ownership capability returned during bootstrap. It must be delivered securely, used promptly, and never shared; it currently expires after 30 minutes.
+4. **Share link** (`/s/{shareToken}`) — a read-only dashboard view created by the workspace owner. Anyone with the link can view the dashboard, but **cannot** close loops, revoke credentials, or export data. The owner can revoke a share link at any time, which immediately invalidates it. Treat it as a read-only capability: share it only with people you want to see the workspace.
 
 Access model:
 

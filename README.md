@@ -10,14 +10,14 @@ Frank Cloud is a hosted, agent-first work log.
 
 - Agents record notes, active work, todos, blockers, decisions, completed work, and session summaries through a workspace-scoped HTTP API.
 - Humans review everything through a private dashboard.
-- Humans close open loops (todos and blockers). Agents can create them but cannot close them.
+- Agents can close open loops (todos and blockers) they or other agents opened; humans can close any loop from the dashboard.
 - Frank is intentionally small. It is not a project-management platform or a multi-user collaboration suite.
 
 ## Why Frank?
 
 I wanted an easy way for the coding agents I work with to keep a running work log that I can review without turning every update into a separate report or another system to maintain.
 
-Because Frank Cloud exposes a small, authenticated API and a portable agent skill, an agent can log active work, capture a decision, add a todo, mark a blocker, or write a session summary directly. I review it all through a private dashboard, and I close the open loops myself. Frank is deliberately not a project-management platform — it is a small, private record of what agents and I are working on.
+Because Frank Cloud exposes a small, authenticated API and a portable agent skill, an agent can log active work, capture a decision, add a todo, mark a blocker, or write a session summary directly. I review it all through a private dashboard, and I close the open loops myself — or let an agent close a loop it finished. Frank is deliberately not a project-management platform — it is a small, private record of what agents and I are working on.
 
 ## Hosted service and source repository
 
@@ -99,17 +99,19 @@ decision = a durable choice and rationale
 session  = concise summary of a work or agent session
 ```
 
-Agents create todos and blockers but cannot close them. Closing an open loop is a human action in the dashboard.
+Agents create todos and blockers and can close them (any agent credential with `write` scope can close any open loop in the workspace). Humans can also close any loop from the dashboard.
 
 ## URLs and access
 
-Frank Cloud uses three distinct URL types. They are not interchangeable:
+Frank Cloud uses four distinct URL types. They are not interchangeable:
 
 1. **Dashboard URL** (`/w/{workspaceId}`) — a reusable, bookmarkable link. The URL itself does **not** grant access; it only opens the dashboard when your browser has a valid, authenticated session for that workspace. Sharing only the dashboard URL does not expose any data, and each browser or browser profile must sign in separately.
 
 2. **Login magic link** — a short-lived, single-use authentication capability sent by email. Whoever redeems an unused link first receives a browser session. Do not share or forward it before use. It currently expires after 20 minutes.
 
 3. **Initial claim link** — a temporary ownership capability returned when a workspace is bootstrapped. Deliver it securely, use it promptly, and never share it. It currently expires after 30 minutes.
+
+4. **Share link** (`/s/{shareToken}`) — a read-only dashboard view created by the workspace owner. Anyone with the link can view the dashboard, but cannot close loops, revoke credentials, or export data. The owner can revoke a share link at any time, which immediately invalidates it. Treat it as a read-only capability: share it only with people you want to see the workspace.
 
 A few things worth knowing about how access works:
 

@@ -225,8 +225,14 @@ fi
 if [[ "$TYPE" == "close" ]]; then
   ID="${1:-}"
   [[ -n "$ID" ]] || { usage; exit 2; }
-  echo "Close is a human action (same-origin, browser session). Agents cannot close loops." >&2
-  exit 2
+  # Agents can now close loops with a workspace-scoped bearer token. The
+  # helper sends the same Authorization header used for writes.
+  curl -fsS -X PATCH \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H 'Accept: application/json' \
+    "${BASE}/v1/workspaces/${WS}/entries/${ID}/close"
+  printf '\n'
+  exit 0
 fi
 
 if [[ "$TYPE" == "project" ]]; then

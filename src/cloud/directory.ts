@@ -18,6 +18,7 @@ const CLAIM_TTL_MS = 30 * 60 * 1000;
 const CLAIM_RESERVATION_MS = 5 * 60 * 1000;
 const LOGIN_TTL_MS = 20 * 60 * 1000;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_LOGIN_CLIENT_CEILING = 20;
 const DEFAULT_LOGIN_GLOBAL_CEILING = 200;
 const DEFAULT_EMAIL_RECIPIENT_CEILING = 3;
@@ -1106,6 +1107,105 @@ export function clearSessionCookie(): string {
     "SameSite=Lax",
     "Max-Age=0",
   ].join("; ");
+}
+
+export interface ShareToken {
+  id: string;
+  token: string;
+  prefix: string;
+  expiresAt: string;
+}
+
+/**
+ * Create a read-only dashboard share token for a workspace. The token is
+ * returned once (in plaintext) and stored only as a SHA-256 hash. The owner
+ * can revoke it later, which immediately invalidates the share link.
+ */
+export async function createShareToken(
+  env: Env,
+  workspaceId: string,
+): Promise<ShareToken> {
+  const id = newId("share");
+  const opaque = await newOpaqueToken("share");
+  const expiresAt = new Date(Date.now() + SHARE_TTL_MS).toISOString();
+  await env.DIRECTORY.prepare(`
+    INSERT INTO share_tokens (id, workspace_id, token_hash, expires_at)
+    VALUES (?, ?, ?, ?)
+  `)
+    .bind(id, workspaceId, opaque.hash, expiresAt)
+    .run();
+  return {
+    id,
+    token: opaque.token,
+    prefix: opaque.prefix,
+    expiresAt,
+  };
+}
+
+/**
+ * Resolve a share token to its workspace, or throw 401/410 if it is invalid,
+ * expired, or revoked. Read-only by construction: it only ever authorizes
+ * dashboard read routes.
+ */
+export async function requireShareToken(
+  env: Env,
+  token: string,
+): Promise<{ workspaceId: string }> {
+  const hash = await hashToken(token);
+  const row = await env.DIRECTORY.prepare(`
+    SELECT st.workspace_id AS workspaceId
+    FROM share_tokens st
+    JOIN workspaces w ON w.id = st.workspace_id
+    WHERE st.token_hash = ?
+      AND st.revoked_at IS NULL
+      AND st.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      AND w.state = 'active'
+    LIMIT 1
+  `)
+    .bind(hash)
+    .first<{ workspaceId: string }>();
+  if (!row) throw new HttpError(401, "Share link is invalid, expired, or revoked");
+  return row;
+}
+
+/**
+ * Revoke a workspace's share token(s). Returns the number revoked. The owner
+ * calls this to invalidate a share link after it has been handed out.
+ */
+export async function revokeShareToken(
+  env: Env,
+  workspaceId: string,
+  shareTokenId: string,
+): Promise<number> {
+  const result = await env.DIRECTORY.prepare(`
+    UPDATE share_tokens
+    SET revoked_at = COALESCE(revoked_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL
+  `)
+    .bind(shareTokenId, workspaceId)
+    .run();
+  return result.meta.changes;
+}
+
+/**
+ * List a workspace's active (non-revoked, non-expired) share tokens so the
+ * owner can see and revoke them from the dashboard.
+ */
+export async function listShareTokens(
+  env: Env,
+  workspaceId: string,
+): Promise<Array<{ id: string; prefix: string; createdAt: string; expiresAt: string }>> {
+  const rows = await env.DIRECTORY.prepare(`
+    SELECT id, token_prefix AS prefix, created_at AS createdAt, expires_at AS expiresAt
+    FROM share_tokens
+    WHERE workspace_id = ?
+      AND revoked_at IS NULL
+      AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    ORDER BY created_at DESC
+  `)
+    .bind(workspaceId)
+    .all<{ id: string; prefix: string; createdAt: string; expiresAt: string }>();
+  return rows.results;
 }
 
 /**
