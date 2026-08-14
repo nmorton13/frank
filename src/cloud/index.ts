@@ -708,6 +708,14 @@ function renderLandingPage(): string {
         <p>Tell your agent:</p>
         <pre><code>Read @url:\`https://frankagent.dev/skills/frank-cloud/SKILL.md\` and set up Frank for me.</code></pre>
         <p>The agent reads the hosted skill, bootstraps an unclaimed workspace by calling the public API, and gives you a claim URL. You enter your email to claim the private dashboard.</p>
+        <p>Once it is set up, just tell your agent what to log and which project it belongs to:</p>
+        <ul>
+          <li>Log to Frank under the <strong>dragon-ranch</strong> project: I'm teaching the wyverns to fetch.</li>
+          <li>Add a Frank todo to the <strong>pizza-quest</strong> project: find the perfect crust recipe.</li>
+          <li>Log a blocker to Frank under <strong>spaceship</strong>: waiting on the warp core before we can test the jump.</li>
+          <li>Record a Frank decision in the <strong>garden</strong> project: we're going with heirloom tomatoes over hybrids because they taste better.</li>
+          <li>Write a Frank session summary for today's work on the <strong>robot-butler</strong> project.</li>
+        </ul>
         <p><a href="/login">Sign in →</a> open your claimed workspace dashboard.</p>
         <p><a href="/health">Health →</a> check service status.</p>
       </section>
