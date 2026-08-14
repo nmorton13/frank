@@ -23,6 +23,57 @@ function loopBullet(entry) {
   return `<li>${esc(entry.title ? `${entry.title}: ` : "")}${esc(entry.text)}</li>`;
 }
 
+// Group open loops by project, then by type, with collapsible sections —
+// matching the local dashboard. Each loop keeps its completion checkbox.
+function groupOpenLoops(entries) {
+  if (!entries.length) return "";
+  const byProject = new Map();
+  for (const entry of entries) {
+    const name = entry.project || "Unassigned";
+    if (!byProject.has(name)) byProject.set(name, []);
+    byProject.get(name).push(entry);
+  }
+  return Array.from(byProject.entries())
+    .map(([project, rows]) => {
+      const byType = new Map();
+      for (const entry of rows) {
+        if (!byType.has(entry.type)) byType.set(entry.type, []);
+        byType.get(entry.type).push(entry);
+      }
+      const sections = Array.from(byType.entries())
+        .map(
+          ([type, typeRows]) => `
+            <details class="loop-type" open>
+              <summary><span class="check">›</span>${esc(type)} (${typeRows.length})</summary>
+              <ul class="loop-bullets">
+                ${typeRows
+                  .map(
+                    (entry) => `
+                  <li class="loop-item" data-entry-id="${entry.id}">
+                    <label class="loop-check">
+                      <input type="checkbox" aria-label="Mark ${esc(entry.type)} complete">
+                      <span class="loop-box" aria-hidden="true"></span>
+                    </label>
+                    <div class="loop-copy">
+                      <strong>${esc(entry.title || entry.text)}</strong>
+                      ${entry.title ? `<p>${esc(entry.text)}</p>` : ""}
+                    </div>
+                  </li>`,
+                  )
+                  .join("")}
+              </ul>
+            </details>`,
+        )
+        .join("");
+      return `
+        <li class="loop-project">
+          <div class="item-title"><span class="check">□</span>${esc(project)}</div>
+          ${sections}
+        </li>`;
+    })
+    .join("");
+}
+
 function historyItem(entry) {
   const closed = entry.status === "closed" ? " closed" : "";
   const when = entry.createdAt ? `<span class="badge">${esc(entry.createdAt)}</span>` : "";
@@ -180,38 +231,38 @@ async function showProjectHistory(project) {
   ensureFocusInsideDrawer();
 }
 
-// Open-loop completion (review-only).
-document.querySelectorAll("[data-entry-id] input").forEach((input) => {
-  input.addEventListener("change", async (event) => {
-    const checkbox = event.currentTarget;
-    const item = checkbox.closest("[data-entry-id]");
-    if (!workspaceId || !item) return;
+// Open-loop completion (review-only). Uses event delegation so re-renders from
+// auto-refresh never orphan the checkbox handlers.
+document.querySelector("[data-open-loop-list]")?.addEventListener("change", async (event) => {
+  const checkbox = event.target;
+  if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== "checkbox") return;
+  const item = checkbox.closest("[data-entry-id]");
+  if (!workspaceId || !item) return;
 
-    checkbox.disabled = true;
-    try {
-      const response = await fetch(
-        `/v1/workspaces/${encodeURIComponent(workspaceId)}/entries/${encodeURIComponent(
-          item.dataset.entryId,
-        )}/close`,
-        { method: "PATCH", headers: { Accept: "application/json" } },
-      );
-      if (!response.ok) throw new Error("Completion failed");
-      item.remove();
-      const list = document.querySelector("[data-open-loop-list]");
-      const remaining = document.querySelectorAll("[data-entry-id]").length;
-      const count = document.querySelector("[data-open-count]");
-      if (count) count.textContent = `${remaining} open`;
-      if (list && remaining === 0) {
-        const empty = document.createElement("li");
-        empty.className = "empty-state";
-        empty.textContent = "No open loops. The page is clear.";
-        list.append(empty);
-      }
-    } catch {
-      checkbox.checked = false;
-      checkbox.disabled = false;
+  checkbox.disabled = true;
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/entries/${encodeURIComponent(
+        item.dataset.entryId,
+      )}/close`,
+      { method: "PATCH", headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) throw new Error("Completion failed");
+    item.remove();
+    const list = document.querySelector("[data-open-loop-list]");
+    const remaining = document.querySelectorAll("[data-entry-id]").length;
+    const count = document.querySelector("[data-open-count]");
+    if (count) count.textContent = `${remaining} open`;
+    if (list && remaining === 0) {
+      const empty = document.createElement("li");
+      empty.className = "empty-state";
+      empty.textContent = "No open loops. The page is clear.";
+      list.append(empty);
     }
-  });
+  } catch {
+    checkbox.checked = false;
+    checkbox.disabled = false;
+  }
 });
 
 document.querySelector("#logout-button")?.addEventListener("click", async () => {
@@ -248,3 +299,78 @@ document.addEventListener("keydown", (event) => {
     trapFocus(event);
   }
 });
+
+// Auto-refresh the dashboard every 30 seconds (quiet live view). Re-renders
+// the status projection in place; the drawer, if open, is left untouched.
+async function refreshDashboard() {
+  if (!workspaceId) return;
+  try {
+    const response = await fetch(`/w/${encodeURIComponent(workspaceId)}/status`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const updated = document.getElementById("updated");
+    if (updated) updated.textContent = `Updated ${new Date().toLocaleString()}`;
+    const current = document.getElementById("currentStatuses");
+    if (current) {
+      current.innerHTML = data.active
+        ? `<div class="current-status-item"><div class="status-lines"><p class="active">${esc(
+            data.active.title ? `${data.active.title}: ${data.active.text}` : data.active.text,
+          )}</p></div><div class="meta">${
+            data.active.project ? `<span>Project: ${esc(data.active.project)}</span>` : ""
+          }<span class="badge">status</span></div></div>`
+        : '<p class="empty">No status set yet.</p>';
+    }
+    const loops = document.querySelector("[data-open-loop-list]");
+    if (loops) {
+      loops.innerHTML = data.openLoops.length
+        ? groupOpenLoops(data.openLoops)
+        : '<li class="empty-state">No open loops. The page is clear.</li>';
+      const count = document.querySelector("[data-open-count]");
+      if (count) count.textContent = `${data.openLoops.length} open`;
+    }
+    const projects = document.getElementById("activeProjects");
+    if (projects) {
+      projects.innerHTML = data.activeProjects.length
+        ? data.activeProjects
+            .map(
+              (project) => `
+            <li>
+              <div class="item-title"><span class="check">✓</span>
+                <button class="project-button" data-project="${esc(project.name)}">${esc(
+                  project.name,
+                )}</button>
+              </div>
+              <div class="item-text">${esc(
+                `${project.count} recent update${project.count === 1 ? "" : "s"} · latest: ${project.lastType}`,
+              )}</div>
+            </li>`,
+            )
+            .join("")
+        : '<li class="empty">No active projects captured.</li>';
+    }
+    const recent = document.getElementById("recent");
+    if (recent) {
+      recent.innerHTML = data.recent.length
+        ? data.recent
+            .map(
+              (entry) => `
+            <li>
+              <div class="item-title"><span class="check">›</span>${esc(
+                entry.project ? `Project: ${entry.project}` : "",
+              )}${esc(entry.type)}</div>
+              <div class="item-text">${esc(
+                entry.title ? `${entry.title}: ${entry.text}` : entry.text,
+              )}</div>
+            </li>`,
+            )
+            .join("")
+        : '<li class="empty">No recent Frank activity.</li>';
+    }
+  } catch {
+    // Transient network/refresh errors are ignored; the next tick retries.
+  }
+}
+
+setInterval(refreshDashboard, 30000);

@@ -36,7 +36,7 @@ const DEFAULT_DELETED_RETENTION_DAYS = 30;
 // against a Cloudflare secret (BOOTSTRAP_TOKEN) and never logged or returned.
 const BOOTSTRAP_AUTH_HEADER = "bootstrap-token";
 // Global safety ceiling on live workspaces, independent of the hourly quota.
-const DEFAULT_TOTAL_CEILING = 100;
+const DEFAULT_TOTAL_CEILING = 20;
 // Per-client ceiling within the same UTC clock hour.
 const DEFAULT_CLIENT_CEILING = 5;
 // Replay remains available only while the associated claim is usable.

@@ -32,7 +32,7 @@ The defaults in `wrangler.jsonc` are conservative pilot limits and can be change
 | `BOOTSTRAP_PUBLIC_QUOTA_PER_HOUR` | 5 | public creation/hour; leaves operator headroom |
 | `BOOTSTRAP_CLIENT_CEILING` | 5 | public creation per client/hour |
 | `BOOTSTRAP_PUBLIC_TOTAL_CEILING` | 80 | retained public workspaces |
-| `BOOTSTRAP_TOTAL_CEILING` | 100 | all retained workspaces |
+| `BOOTSTRAP_TOTAL_CEILING` | 20 | all retained workspaces |
 | `LOGIN_CLIENT_CEILING` / `LOGIN_GLOBAL_CEILING` | 20 / 200 | login requests/hour |
 | `CLAIM_CLIENT_CEILING` / `CLAIM_GLOBAL_CEILING` | 20 / 200 | claim requests/hour |
 | `EMAIL_RECIPIENT_CEILING` / `EMAIL_GLOBAL_CEILING` | 3 / 50 | claim plus login emails/hour |
