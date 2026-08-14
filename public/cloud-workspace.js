@@ -358,8 +358,10 @@ async function refreshDashboard() {
               (entry) => `
             <li>
               <div class="item-title"><span class="check">›</span>${esc(
-                entry.project ? `Project: ${entry.project}` : "",
-              )}${esc(entry.type)}</div>
+                [entry.project ? `Project: ${entry.project}` : "", entry.type]
+                  .filter(Boolean)
+                  .join(" · "),
+              )}</div>
               <div class="item-text">${esc(
                 entry.title ? `${entry.title}: ${entry.text}` : entry.text,
               )}</div>
