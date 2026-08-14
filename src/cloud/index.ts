@@ -786,7 +786,7 @@ function renderLandingPage(): string {
         <ul>
           <li><strong>Agents log, you review.</strong> Your coding agent records what it did — notes, todos, blockers, decisions, sessions — as it works.</li>
           <li><strong>One private dashboard.</strong> Every workspace is isolated; your credentials never reach another workspace.</li>
-          <li><strong>You close the loops.</strong> Agents can open a todo or flag a blocker, but only you can check it off. Nothing slips past you.</li>
+          <li><strong>You close the loops — or your agents do.</strong> Agents can open a todo or flag a blocker, and any agent credential can close an open loop. You can also check off anything from the dashboard.</li>
         </ul>
       </section>
       <section class="admin-card">

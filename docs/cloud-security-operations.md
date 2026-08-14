@@ -2,25 +2,27 @@
 
 Frank Cloud isolates each workspace with workspace-bound agent credentials and human ownership sessions. Agent, claim, verification, login, and browser-session credentials are stored as hashes. Claim and magic-link capabilities are placed in URL fragments, then exchanged through same-origin JSON POST requests; fragments are removed from browser history by the page scripts.
 
-## The three URL types and session model
+## The four URL types and session model
 
-Frank Cloud uses three distinct URL types with very different properties:
+Frank Cloud uses four distinct URL types with very different properties:
 
 | Type | Example | Expires | Reusable | Grants access? |
 | --- | --- | ---: | ---: | --- |
 | **Dashboard URL** | `/w/{workspaceId}` | never (bookmark) | yes | No — only opens the dashboard with a valid session |
 | **Login magic link** | `/login#token=…` | 20 minutes | no (single-use) | Yes, a temporary browser session to whoever redeems it first |
 | **Initial claim link** | `/claim#token=…` | 30 minutes | no (single-use) | Yes, temporary ownership of a new workspace |
+| **Share link** | `/s/{shareToken}` | 30 days | yes (until revoked) | Yes, a read-only dashboard view |
 
 Key properties of access control:
 
 - A **dashboard URL does not grant access**. It requires a valid, authenticated browser session for that workspace (an owner-bound `frank_session` cookie). Sharing only the dashboard URL does not expose any workspace data.
 - A **login magic link** is a short-lived, single-use authentication capability sent by email. Whoever redeems an unused link first receives a browser session. It must not be shared or forwarded before use, and it currently expires after 20 minutes.
 - An **initial claim link** is a temporary ownership capability returned during workspace bootstrap. It must be delivered securely, used promptly, and never shared. It currently expires after 30 minutes.
+- A **share link** is a read-only dashboard view created by the workspace owner. It authorizes only the read-only shared view — it can never close loops, revoke credentials, or export data. The owner can revoke a share token at any time, which immediately invalidates the link. Treat it as a read-only capability.
 - Chrome, Safari, and separate browser profiles each keep their own session cookie. A user can remain signed in on multiple browsers by requesting and redeeming a separate login link in each browser.
 - Browser sessions currently last up to 30 days unless the user logs out or the session is revoked or expired.
 - **Workspace IDs are not secrets or authentication credentials.** They are opaque identifiers, not capabilities. Human access requires an owner-bound session cookie; agent access requires a workspace-scoped bearer token.
-- Sharing an ordinary dashboard URL is **not** equivalent to sharing access. Sharing an unused claim or login magic link **is** equivalent to sharing temporary access authority.
+- Sharing an ordinary dashboard URL is **not** equivalent to sharing access. Sharing an unused claim or login magic link **is** equivalent to sharing temporary access authority. Sharing a share link grants read-only access until it is revoked or expires.
 
 ## Application limits
 
