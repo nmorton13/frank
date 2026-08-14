@@ -649,6 +649,18 @@ async function handle(
     return htmlResponse(renderWorkspace(workspaceId, directory, projection));
   }
 
+  // Human-scoped status JSON for the dashboard's auto-refresh. Same-origin and
+  // human-authenticated (read-only), so it is safe to poll from the browser.
+  const workspaceStatusJson = pathMatch(url.pathname, /^\/w\/([^/]+)\/status$/);
+  if (request.method === "GET" && workspaceStatusJson) {
+    const workspaceId = decodeURIComponent(workspaceStatusJson[1]!);
+    await requireHuman(env, request, workspaceId);
+    const projection = await env.WORKSPACES.getByName(workspaceId).getStatusProjection({
+      allOpenLoops: true,
+    });
+    return jsonResponse(projection);
+  }
+
   const projectHistoryPage = pathMatch(
     url.pathname,
     /^\/w\/([^/]+)\/projects\/([^/]+)\/entries$/,
@@ -683,6 +695,14 @@ function renderLandingPage(): string {
         <h1>A work log for you and your agents.</h1>
         <p>Frank is a small, agent-first work log. Your agents write notes, todos, blockers, and status updates; you review them on a private dashboard and check off open loops when they are done.</p>
       </header>
+      <section class="admin-card">
+        <h2>What you get</h2>
+        <ul>
+          <li><strong>Agents log, you review.</strong> Your coding agent records what it did — notes, todos, blockers, decisions, sessions — as it works.</li>
+          <li><strong>One private dashboard.</strong> Every workspace is isolated; your credentials never reach another workspace.</li>
+          <li><strong>You close the loops.</strong> Agents can open a todo or flag a blocker, but only you can check it off. Nothing slips past you.</li>
+        </ul>
+      </section>
       <section class="admin-card">
         <h2>Get started</h2>
         <p>Tell your agent:</p>
@@ -834,44 +854,75 @@ function renderWorkspace(
 ): string {
   const title = directory.pageTitle || directory.displayName || "Frank";
 
-  const currentItems = [projection.active, ...projection.activeRightNow].filter(
-    (entry, index, all) => entry && all.findIndex((e) => e?.id === entry.id) === index,
-  ) as WorkspaceEntry[];
-  const currentStatus = currentItems.length
-    ? currentItems
-        .map(
-          (entry) => `
-            <div class="current-status-item">
-              <div class="status-lines"><p class="active">${htmlEscape(
-                entry.title ? `${entry.title}: ${entry.text}` : entry.text,
-              )}</p></div>
-              <div class="meta">
-                ${entry.project ? `<span>Project: ${htmlEscape(entry.project)}</span>` : ""}
-                <span class="badge">${htmlEscape(entry.type)}</span>
-              </div>
-            </div>`,
-        )
-        .join("")
-    : '<p class="empty">No entries yet.</p>';
+  // Group open loops by project, then by type, with collapsible sections —
+  // matching the local dashboard. Each loop keeps its completion checkbox.
+  function groupOpenLoops(entries: WorkspaceEntry[]): string {
+    if (!entries.length) return '<li class="empty-state">No open loops. The page is clear.</li>';
+    const byProject = new Map<string, WorkspaceEntry[]>();
+    for (const entry of entries) {
+      const name = entry.project || "Unassigned";
+      if (!byProject.has(name)) byProject.set(name, []);
+      byProject.get(name)!.push(entry);
+    }
+    return Array.from(byProject.entries())
+      .map(([project, rows]) => {
+        const byType = new Map<string, WorkspaceEntry[]>();
+        for (const entry of rows) {
+          if (!byType.has(entry.type)) byType.set(entry.type, []);
+          byType.get(entry.type)!.push(entry);
+        }
+        const sections = Array.from(byType.entries())
+          .map(
+            ([type, typeRows]) => `
+              <details class="loop-type" open>
+                <summary><span class="check">›</span>${htmlEscape(type)} (${typeRows.length})</summary>
+                <ul class="loop-bullets">
+                  ${typeRows
+                    .map(
+                      (entry) => `
+                    <li class="loop-item" data-entry-id="${entry.id}">
+                      <label class="loop-check">
+                        <input type="checkbox" aria-label="Mark ${htmlEscape(entry.type)} complete">
+                        <span class="loop-box" aria-hidden="true"></span>
+                      </label>
+                      <div class="loop-copy">
+                        <strong>${htmlEscape(entry.title || entry.text)}</strong>
+                        ${entry.title ? `<p>${htmlEscape(entry.text)}</p>` : ""}
+                      </div>
+                    </li>`,
+                    )
+                    .join("")}
+                </ul>
+              </details>`,
+          )
+          .join("");
+        return `
+          <li class="loop-project">
+            <div class="item-title"><span class="check">□</span>${htmlEscape(project)}</div>
+            ${sections}
+          </li>`;
+      })
+      .join("");
+  }
 
-  const openLoops = projection.openLoops.length
-    ? projection.openLoops
-        .map(
-          (entry) => `
-            <li class="loop-item" data-entry-id="${entry.id}">
-              <label class="loop-check">
-                <input type="checkbox" aria-label="Mark ${htmlEscape(entry.type)} complete">
-                <span class="loop-box" aria-hidden="true"></span>
-              </label>
-              <div class="loop-copy">
-                ${entry.project ? `<span class="eyebrow">${htmlEscape(entry.project)}</span>` : ""}
-                <strong>${htmlEscape(entry.title || entry.text)}</strong>
-                ${entry.title ? `<p>${htmlEscape(entry.text)}</p>` : ""}
-              </div>
-            </li>`,
-        )
-        .join("")
-    : '<li class="empty-state">No open loops. The page is clear.</li>';
+  const openLoops = groupOpenLoops(projection.openLoops);
+
+  // The headline card shows only the single, manually-set `status` entry.
+  // Active-right-now work is deliberately not merged into the headline.
+  const currentStatus = projection.active
+    ? `
+        <div class="current-status-item">
+          <div class="status-lines"><p class="active">${htmlEscape(
+            projection.active.title
+              ? `${projection.active.title}: ${projection.active.text}`
+              : projection.active.text,
+          )}</p></div>
+          <div class="meta">
+            ${projection.active.project ? `<span>Project: ${htmlEscape(projection.active.project)}</span>` : ""}
+            <span class="badge">status</span>
+          </div>
+        </div>`
+    : '<p class="empty">No status set yet.</p>';
 
   const activeProjects = projection.activeProjects.length
     ? projection.activeProjects
@@ -918,18 +969,26 @@ function renderWorkspace(
   <body class="admin-page cloud-workspace dashboard" data-workspace-id="${htmlEscape(
     workspaceId,
   )}">
-    <main class="admin-shell">
-      <header class="admin-header">
-        <p class="eyebrow">Frank / workspace</p>
-        <h1>${htmlEscape(title)}</h1>
-        <p>Review what your agents have recorded. Check off a todo or blocker when it is done.</p>
-        <button type="button" id="logout-button">Sign out</button>
+    <div class="wrap">
+      <header class="header">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 26h36"/><path d="M22 25c1-8 4-13 10-13s9 5 10 13"/><path d="M18 36c4-3 9-3 14 0 5-3 10-3 14 0"/><circle cx="24" cy="36" r="6"/><circle cx="40" cy="36" r="6"/><path d="M30 36h4"/><path d="M21 49c7 4 15 4 22 0"/></svg></div>
+          <div>
+            <div class="kicker">Frank / workspace</div>
+            <h1>${htmlEscape(title)}</h1>
+            <p class="sub">Review what your agents have recorded. Check off a todo or blocker when it is done.</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="pill" id="updated">Loading…</div>
+          <button type="button" id="logout-button" class="logout-button">Sign out</button>
+        </div>
       </header>
-      <div class="grid">
+      <main class="grid">
         <div class="column">
           <section class="card" aria-labelledby="status-heading">
             <h2 id="status-heading">Current status</h2>
-            <div class="current-statuses">${currentStatus}</div>
+            <div class="current-statuses" id="currentStatuses">${currentStatus}</div>
           </section>
           <section class="card" aria-labelledby="loops-heading">
             <div class="section-heading"><h2 id="loops-heading">Open loops</h2><span data-open-count>${projection.openLoops.length} open</span></div>
@@ -946,8 +1005,9 @@ function renderWorkspace(
             <ul id="recent">${recent}</ul>
           </section>
         </div>
-      </div>
-    </main>
+      </main>
+      <div class="footer"><span><a href="/skills/frank-cloud/SKILL.md" class="skill-link">Frank agent skill</a> · Auto-refreshes every 30 seconds</span></div>
+    </div>
     <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
     <aside
       class="project-drawer"

@@ -687,13 +687,10 @@ export class Workspace extends DurableObject<Env> {
 
   getStatusProjection(options: { allOpenLoops?: boolean } = {}): WorkspaceStatusProjection {
     const recentForty = this.listEntries({ limit: 40 });
-    const active =
-      recentForty.find((entry) => entry.type === "status") ??
-      recentForty.find((entry) =>
-        ["active", "session", "note", "todo", "blocker"].includes(entry.type),
-      ) ??
-      recentForty[0] ??
-      null;
+    // The headline status is a single, manually-set `status` entry. It must not
+    // fall back to recent non-status entries, so open loops or active work never
+    // drift into the headline.
+    const active = recentForty.find((entry) => entry.type === "status") ?? null;
     const activeRightNow = this.listEntries({ type: "active", status: "open", limit: 12 });
     // "Active projects" must reflect current project status, so exclude any
     // project that has since been archived — even if it has recent entries.
