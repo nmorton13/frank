@@ -54,6 +54,18 @@ Give an agent the hosted Frank Cloud skill and let it bootstrap a workspace:
 6. The agent runs `remote-check`.
 7. The agent can begin writing entries.
 
+### Example things to say to your agent
+
+Once set up, just tell your agent what to log and which project it belongs to:
+
+- Log to Frank under the **dragon-ranch** project: I'm teaching the wyverns to fetch.
+- Add a Frank todo to the **pizza-quest** project: find the perfect crust recipe.
+- Log a blocker to Frank under **spaceship**: waiting on the warp core before we can test the jump.
+- Record a Frank decision in the **garden** project: we're going with heirloom tomatoes over hybrids because they taste better.
+- Write a Frank session summary for today's work on the **robot-butler** project.
+
+Every entry is scoped to a project, so you can keep several projects in one workspace and tell your agent which one each update belongs to.
+
 ### The three required agent values
 
 An agent needs three values to talk to its workspace:
