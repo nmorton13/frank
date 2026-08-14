@@ -948,8 +948,10 @@ function renderWorkspace(
           (entry) => `
             <li>
               <div class="item-title"><span class="check">›</span>${htmlEscape(
-                entry.project ? `Project: ${entry.project}` : "",
-              )}${htmlEscape(entry.type)}</div>
+                [entry.project ? `Project: ${entry.project}` : "", entry.type]
+                  .filter(Boolean)
+                  .join(" · "),
+              )}</div>
               <div class="item-text">${htmlEscape(
                 entry.title ? `${entry.title}: ${entry.text}` : entry.text,
               )}</div>
