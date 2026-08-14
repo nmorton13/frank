@@ -188,6 +188,18 @@ async function main() {
     runHelper(["note", "url-enc-test", proj]);
     assert.match(runHelper(["list", "--project", proj]), /url-enc-test/, "URL-encoded project");
 
+    // 15. Agent can close a todo via the helper's close command.
+    const todo = JSON.parse(
+      runHelper(["todo", "helper-closable-todo", "Integration Project"]),
+    ).entry;
+    const closed = JSON.parse(runHelper(["close", String(todo.id)]));
+    assert.strictEqual(closed.entry.status, "closed", "agent close via helper");
+    const openAfter = JSON.parse(runHelper(["open"]));
+    assert.ok(
+      !openAfter.entries.some((e) => e.id === todo.id),
+      "closed todo no longer appears in open loops",
+    );
+
     console.log("frank-cloud-helper tests passed");
   } finally {
     worker.kill();

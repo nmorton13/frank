@@ -34,6 +34,7 @@ Every route below requires `Authorization: Bearer <agent token>` and is bound to
 | `POST` | `/v1/workspaces/{workspaceId}/projects/merge` |
 | `POST` | `/v1/workspaces/{workspaceId}/projects/archive` |
 | `POST` | `/v1/workspaces/{workspaceId}/projects/inactive` |
+| `PATCH` | `/v1/workspaces/{workspaceId}/entries/{entryId}/close` | Close an open todo/blocker. |
 | `GET` | `/v1/workspaces/{workspaceId}/open` |
 | `GET` | `/v1/workspaces/{workspaceId}/status` |
 | `GET` | `/v1/workspaces/{workspaceId}/projects/{name}/entries` |
@@ -56,3 +57,16 @@ The private dashboard and human API require the `frank_session` cookie. Ownershi
 | `GET` | `/v1/workspaces/{workspaceId}/export` | Bounded export with per-collection `truncated` flags. |
 
 No workspace route accepts a token/session belonging only to another workspace owner. One verified user may own up to the configured workspace ceiling.
+
+## Share API
+
+A workspace owner can create a **read-only** dashboard share link. The share token is returned once in plaintext and stored only as a SHA-256 hash. It authorizes only the read-only shared dashboard view — it can never close loops, revoke credentials, or export data. The owner can revoke a share token at any time, which immediately invalidates the link.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/v1/workspaces/{workspaceId}/share` | Create a share token (owner-only, same-origin). Returns `{share:{id,prefix,expiresAt,url}}`. |
+| `GET` | `/v1/workspaces/{workspaceId}/share` | List active share tokens (owner-only). |
+| `POST` | `/v1/workspaces/{workspaceId}/share/{shareTokenId}/revoke` | Revoke a share token (owner-only, same-origin). |
+| `GET` | `/s/{shareToken}` | Read-only shared dashboard view (share-token authenticated). |
+
+Share tokens expire after 30 days by default and are stored hashed. Revoking a token sets `revoked_at`, so the link returns 401 immediately.

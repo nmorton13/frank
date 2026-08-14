@@ -3,13 +3,17 @@ import {
   cleanupAbandonedWorkspaces,
   clearSessionCookie,
   consumeLoginToken,
+  createShareToken,
   enforcePublicRequestLimit,
+  listShareTokens,
   requireAgent,
   requireHuman,
+  requireShareToken,
   requestClaimVerification,
   requestLoginLink,
   revokeAgentCredential,
   revokeHumanSession,
+  revokeShareToken,
   sessionCookie,
   verifyClaim,
 } from "./directory";
@@ -597,13 +601,26 @@ async function handle(
     /^\/v1\/workspaces\/([^/]+)\/entries\/(\d+)\/close$/,
   );
   if (request.method === "PATCH" && closeEntry) {
-    requireSameOrigin(request, String(env.APP_ORIGIN));
     const workspaceId = decodeURIComponent(closeEntry[1]!);
+    const entryId = Number(closeEntry[2]!);
+    const authorization = request.headers.get("authorization");
+    // Agents close via a workspace-scoped bearer token (no browser origin).
+    // Humans close via a same-origin browser session cookie.
+    if (authorization?.toLowerCase().startsWith("bearer ")) {
+      const agent = await requireAgent(env, request, workspaceId, "write");
+      const entry = await env.WORKSPACES.getByName(workspaceId).closeEntry(entryId, {
+        type: "agent",
+        id: agent.credentialId,
+      });
+      if (!entry) throw new HttpError(404, "Open loop not found");
+      return jsonResponse({ entry });
+    }
+    requireSameOrigin(request, String(env.APP_ORIGIN));
     const human = await requireHuman(env, request, workspaceId);
-    const entry = await env.WORKSPACES.getByName(workspaceId).closeEntry(
-      Number(closeEntry[2]!),
-      { type: "human", id: human.userId },
-    );
+    const entry = await env.WORKSPACES.getByName(workspaceId).closeEntry(entryId, {
+      type: "human",
+      id: human.userId,
+    });
     if (!entry) throw new HttpError(404, "Open loop not found");
     return jsonResponse({ entry });
   }
@@ -674,6 +691,75 @@ async function handle(
       queryLimit(url, 50, 100),
     );
     return jsonResponse(history);
+  }
+
+  // --- Read-only dashboard share links ---
+  // The owner creates a share token (returned once), shares the link, and can
+  // revoke it later. A share token authorizes ONLY read-only dashboard routes;
+  // it can never close loops, revoke credentials, or export data.
+
+  // Create a share token (owner-only).
+  const shareCreate = pathMatch(url.pathname, /^\/v1\/workspaces\/([^/]+)\/share$/);
+  if (request.method === "POST" && shareCreate) {
+    requireSameOrigin(request, String(env.APP_ORIGIN));
+    const workspaceId = decodeURIComponent(shareCreate[1]!);
+    await requireHuman(env, request, workspaceId);
+    const share = await createShareToken(env, workspaceId);
+    return jsonResponse({
+      share: {
+        id: share.id,
+        prefix: share.prefix,
+        expiresAt: share.expiresAt,
+        url: `${String(env.APP_ORIGIN)}/s/${encodeURIComponent(share.token)}`,
+      },
+    });
+  }
+
+  // List active share tokens (owner-only).
+  const shareList = pathMatch(url.pathname, /^\/v1\/workspaces\/([^/]+)\/share$/);
+  if (request.method === "GET" && shareList) {
+    const workspaceId = decodeURIComponent(shareList[1]!);
+    await requireHuman(env, request, workspaceId);
+    const tokens = await listShareTokens(env, workspaceId);
+    return jsonResponse({ tokens });
+  }
+
+  // Revoke a share token (owner-only).
+  const shareRevoke = pathMatch(
+    url.pathname,
+    /^\/v1\/workspaces\/([^/]+)\/share\/([^/]+)\/revoke$/,
+  );
+  if (request.method === "POST" && shareRevoke) {
+    requireSameOrigin(request, String(env.APP_ORIGIN));
+    const workspaceId = decodeURIComponent(shareRevoke[1]!);
+    await requireHuman(env, request, workspaceId);
+    const revoked = await revokeShareToken(
+      env,
+      workspaceId,
+      decodeURIComponent(shareRevoke[2]!),
+    );
+    if (revoked === 0) throw new HttpError(404, "Share token not found or already revoked");
+    return jsonResponse({ revoked: true });
+  }
+
+  // Read-only shared dashboard view (share-token authenticated).
+  const shareView = pathMatch(url.pathname, /^\/s\/([^/]+)$/);
+  if (request.method === "GET" && shareView) {
+    const { workspaceId } = await requireShareToken(
+      env,
+      decodeURIComponent(shareView[1]!),
+    );
+    const directory = await env.DIRECTORY.prepare(`
+      SELECT display_name AS displayName, page_title AS pageTitle
+      FROM workspaces WHERE id = ? AND state = 'active'
+    `)
+      .bind(workspaceId)
+      .first<WorkspaceDirectoryRow>();
+    if (!directory) throw new HttpError(404, "Workspace not found");
+    const projection = await env.WORKSPACES.getByName(workspaceId).getStatusProjection({
+      allOpenLoops: true,
+    });
+    return htmlResponse(renderSharedWorkspace(workspaceId, directory, projection));
   }
 
   return jsonResponse({ error: "Not found" }, 404);
@@ -1031,6 +1117,166 @@ function renderWorkspace(
       <div id="drawerContent"></div>
     </aside>
     <script src="/assets/cloud-workspace.js" defer></script>
+  </body>
+</html>`;
+}
+
+/**
+ * Read-only shared dashboard view. Rendered for a valid share token. It shows
+ * the same status projection as the owner dashboard but deliberately omits all
+ * interactive controls: no completion checkboxes, no logout, no auto-refresh,
+ * no project drawer. A share link can never close a loop or change data.
+ */
+function renderSharedWorkspace(
+  workspaceId: string,
+  directory: WorkspaceDirectoryRow,
+  projection: WorkspaceStatusProjection,
+): string {
+  const title = directory.pageTitle || directory.displayName || "Frank";
+
+  function groupOpenLoops(entries: WorkspaceEntry[]): string {
+    if (!entries.length) return '<li class="empty-state">No open loops. The page is clear.</li>';
+    const byProject = new Map<string, WorkspaceEntry[]>();
+    for (const entry of entries) {
+      const name = entry.project || "Unassigned";
+      if (!byProject.has(name)) byProject.set(name, []);
+      byProject.get(name)!.push(entry);
+    }
+    return Array.from(byProject.entries())
+      .map(([project, rows]) => {
+        const byType = new Map<string, WorkspaceEntry[]>();
+        for (const entry of rows) {
+          if (!byType.has(entry.type)) byType.set(entry.type, []);
+          byType.get(entry.type)!.push(entry);
+        }
+        const sections = Array.from(byType.entries())
+          .map(
+            ([type, typeRows]) => `
+              <details class="loop-type" open>
+                <summary><span class="check">›</span>${htmlEscape(type)} (${typeRows.length})</summary>
+                <ul class="loop-bullets">
+                  ${typeRows
+                    .map(
+                      (entry) => `
+                    <li class="loop-item" data-entry-id="${entry.id}">
+                      <div class="loop-copy">
+                        <strong>${htmlEscape(entry.title || entry.text)}</strong>
+                        ${entry.title ? `<p>${htmlEscape(entry.text)}</p>` : ""}
+                      </div>
+                    </li>`,
+                    )
+                    .join("")}
+                </ul>
+              </details>`,
+          )
+          .join("");
+        return `
+          <li class="loop-project">
+            <div class="item-title"><span class="check">□</span>${htmlEscape(project)}</div>
+            ${sections}
+          </li>`;
+      })
+      .join("");
+  }
+
+  const openLoops = groupOpenLoops(projection.openLoops);
+
+  const currentStatus = projection.active
+    ? `
+        <div class="current-status-item">
+          <div class="status-lines"><p class="active">${htmlEscape(
+            projection.active.title
+              ? `${projection.active.title}: ${projection.active.text}`
+              : projection.active.text,
+          )}</p></div>
+          <div class="meta">
+            ${projection.active.project ? `<span>Project: ${htmlEscape(projection.active.project)}</span>` : ""}
+            <span class="badge">status</span>
+          </div>
+        </div>`
+    : '<p class="empty">No status set yet.</p>';
+
+  const activeProjects = projection.activeProjects.length
+    ? projection.activeProjects
+        .map(
+          (project) => `
+            <li>
+              <div class="item-title"><span class="check">✓</span>${htmlEscape(project.name)}</div>
+              <div class="item-text">${htmlEscape(
+                `${project.count} recent update${project.count === 1 ? "" : "s"} · latest: ${project.lastType}`,
+              )}</div>
+            </li>`,
+        )
+        .join("")
+    : '<li class="empty">No active projects captured.</li>';
+
+  const recent = projection.recent.length
+    ? projection.recent
+        .map(
+          (entry) => `
+            <li>
+              <div class="item-title"><span class="check">›</span>${htmlEscape(
+                [entry.project ? `Project: ${entry.project}` : "", entry.type]
+                  .filter(Boolean)
+                  .join(" · "),
+              )}</div>
+              <div class="item-text">${htmlEscape(
+                entry.title ? `${entry.title}: ${entry.text}` : entry.text,
+              )}</div>
+            </li>`,
+        )
+        .join("")
+    : '<li class="empty">No recent Frank activity.</li>';
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${htmlEscape(title)}</title>
+    <link rel="stylesheet" href="/assets/frank.css">
+  </head>
+  <body class="admin-page cloud-workspace dashboard shared-view" data-workspace-id="${htmlEscape(
+    workspaceId,
+  )}">
+    <div class="wrap">
+      <header class="header">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 26h36"/><path d="M22 25c1-8 4-13 10-13s9 5 10 13"/><path d="M18 36c4-3 9-3 14 0 5-3 10-3 14 0"/><circle cx="24" cy="36" r="6"/><circle cx="40" cy="36" r="6"/><path d="M30 36h4"/><path d="M21 49c7 4 15 4 22 0"/></svg></div>
+          <div>
+            <div class="kicker">Frank / shared view</div>
+            <h1>${htmlEscape(title)}</h1>
+            <p class="sub">Read-only view shared by the workspace owner.</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="pill">Read-only</div>
+        </div>
+      </header>
+      <main class="grid">
+        <div class="column">
+          <section class="card" aria-labelledby="status-heading">
+            <h2 id="status-heading">Current status</h2>
+            <div class="current-statuses" id="currentStatuses">${currentStatus}</div>
+          </section>
+          <section class="card" aria-labelledby="loops-heading">
+            <div class="section-heading"><h2 id="loops-heading">Open loops</h2><span data-open-count>${projection.openLoops.length} open</span></div>
+            <ul class="open-loop-list" data-open-loop-list>${openLoops}</ul>
+          </section>
+        </div>
+        <div class="column">
+          <section class="card" aria-labelledby="projects-heading">
+            <h2 id="projects-heading">Active projects</h2>
+            <ul id="activeProjects">${activeProjects}</ul>
+          </section>
+          <section class="card" aria-labelledby="recent-heading">
+            <h2 id="recent-heading">Recent log</h2>
+            <ul id="recent">${recent}</ul>
+          </section>
+        </div>
+      </main>
+      <div class="footer"><span>Read-only shared view · no changes can be made from this link</span></div>
+    </div>
   </body>
 </html>`;
 }

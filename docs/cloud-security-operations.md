@@ -145,7 +145,7 @@ Rotate any time with `npx wrangler secret put BOOTSTRAP_TOKEN`; secrets take eff
 ## Deployment sequence
 
 1. Export remote D1 and record a Time Travel bookmark using the procedure above.
-2. Apply migrations through `0006_abuse_controls.sql` in numeric order.
+2. Apply migrations through `0007_share_tokens.sql` in numeric order.
 3. Verify `BOOTSTRAP_TOKEN` remains a Cloudflare secret, not a Wrangler plaintext variable, and is at least 128 bits.
 4. Run `npm run typecheck`, `npm test`, `npm audit --omit=dev`, and `npm run cf:check`.
 5. Configure the manual edge and billing controls above.
