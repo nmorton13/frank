@@ -216,3 +216,100 @@ describe("share drawer (read-only share links)", () => {
     expect(drawer.textContent).toContain("No active share links");
   });
 });
+
+function buildAgentsDom() {
+  const dom = new JSDOM(
+    `<!doctype html>
+<html><body class="cloud-workspace" data-workspace-id="wsp_test">
+  <main>
+    <button id="agents-button">Agents</button>
+  </main>
+  <div class="drawer-backdrop" id="agentsBackdrop" hidden></div>
+  <aside class="project-drawer share-drawer" id="agentsDrawer" role="dialog" aria-modal="true" aria-hidden="true" inert>
+    <div id="agentsContent"></div>
+  </aside>
+</body></html>`,
+    { url: "https://frank.test/w/wsp_test", runScripts: "dangerously", pretendToBeVisual: true },
+  );
+  dom.window.eval(scriptSource);
+  return dom;
+}
+
+describe("agents drawer (multi-agent provisioning)", () => {
+  it("opens on Agents click and lists credentials", async () => {
+    const dom = buildAgentsDom();
+    const drawer = dom.window.document.getElementById("agentsDrawer");
+    dom.window.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        credentials: [
+          { id: "cred_1", label: "claude", prefix: "frank_agent_abc", status: "active", scopes: ["read", "write"] },
+        ],
+      }),
+    });
+
+    click(dom, "#agents-button");
+    await settle(dom);
+
+    expect(drawer.getAttribute("aria-hidden")).toBe("false");
+    expect(drawer.hasAttribute("inert")).toBe(false);
+    expect(drawer.textContent).toContain("claude");
+    expect(drawer.querySelector("[data-revoke-agent]")).toBeTruthy();
+  });
+
+  it("mints a credential, shows the copy-setup button, and lists the new agent", async () => {
+    const dom = buildAgentsDom();
+    const drawer = dom.window.document.getElementById("agentsDrawer");
+    const setupUrl = "https://frank.test/a/frank_setup_newtoken";
+    dom.window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ credentials: [] }) }) // initial list
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          provision: { credential: { id: "cred_2", label: "codex" }, setup: { url: setupUrl } },
+        }),
+      }) // create
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          credentials: [{ id: "cred_2", label: "codex", prefix: "frank_agent_newtoken", status: "active", scopes: ["read", "write"] }],
+        }),
+      }); // re-list
+
+    click(dom, "#agents-button");
+    await settle(dom);
+
+    const input = drawer.querySelector("#agent-label");
+    input.value = "codex";
+    input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    const form = drawer.querySelector("#agent-create-form");
+    form.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
+    await settle(dom);
+
+    expect(drawer.querySelector("[data-copy-agent-setup]")).toBeTruthy();
+    expect(drawer.textContent).toContain("codex");
+  });
+
+  it("revokes a credential and reloads the list", async () => {
+    const dom = buildAgentsDom();
+    const drawer = dom.window.document.getElementById("agentsDrawer");
+    dom.window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          credentials: [{ id: "cred_1", label: "claude", prefix: "frank_agent_abc", status: "active", scopes: ["read", "write"] }],
+        }),
+      }) // initial list
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ revoked: true }) }) // revoke
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ credentials: [] }) }); // reload after revoke
+
+    click(dom, "#agents-button");
+    await settle(dom);
+    click(dom, "[data-revoke-agent]");
+    await settle(dom);
+
+    expect(drawer.textContent).toContain("No agent credentials yet.");
+  });
+});

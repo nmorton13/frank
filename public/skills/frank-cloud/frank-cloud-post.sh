@@ -14,7 +14,15 @@
 set -euo pipefail
 
 # --- Auto-load XDG credentials (silent; only applies when the file exists) ---
-_FRANK_RC="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/frankrc"
+# Per-agent config convention: when FRANK_PROFILE is set (e.g. "codex"), the
+# helper reads ~/.config/frank/<FRANK_PROFILE>/frankrc so each agent keeps its
+# own credential without clobbering another's. When unset, it falls back to the
+# shared ~/.config/frank/frankrc (so an unprofiled agent keeps working).
+_FRANK_DIR="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank"
+_FRANK_RC="${_FRANK_DIR}/frankrc"
+if [[ -n "${FRANK_PROFILE:-}" ]]; then
+  _FRANK_RC="${_FRANK_DIR}/${FRANK_PROFILE}/frankrc"
+fi
 if [[ -f "$_FRANK_RC" ]]; then
   # shellcheck disable=SC1090
   . "$_FRANK_RC"
@@ -24,6 +32,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage:
   frank-cloud-post.sh bootstrap [displayName] [timeZone] [agentLabel] [email]
+  frank-cloud-post.sh redeem <setup-url>   # redeem a dashboard 'Add agent' setup link into frankrc
   frank-cloud-post.sh <note|status|active|todo|blocker|done|decision|session> <text> [project] [tag ...]
   frank-cloud-post.sh close <entry-id>
   frank-cloud-post.sh backup [outfile.json]   # full untruncated portable dump (default stdout)
@@ -41,7 +50,7 @@ Usage:
   frank-cloud-post.sh self-test
   frank-cloud-post.sh skill-update   # fetch the latest hosted skill + helper
 
-For bootstrap: only FRANK_CLOUD_BASE is required.
+For bootstrap and redeem: only FRANK_CLOUD_BASE is required.
 For all other commands: FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN must be set.
 USAGE
 }
@@ -80,6 +89,52 @@ NODE
     -H "Idempotency-Key: ${IDEM_KEY}" \
     -d "${PAYLOAD}"
   printf '\n'
+  exit 0
+fi
+
+# Redeem a dashboard 'Add agent' setup link into the XDG config file. The link
+# is single-use and short-lived; the response returns the write credential once.
+if [[ "$TYPE" == "redeem" ]]; then
+  BASE="${FRANK_CLOUD_BASE:-}"
+  if [[ -z "$BASE" ]]; then
+    echo "FRANK_CLOUD_BASE must be set" >&2
+    exit 1
+  fi
+  BASE="${BASE%/}"
+  URL="${1:-}"
+  if [[ -z "$URL" ]]; then
+    echo "Usage: frank-cloud-post.sh redeem <setup-url>" >&2
+    exit 2
+  fi
+  # The URL is either the full https://host/a/token or just the /a/token path.
+  RESPONSE="$(curl -fsS "${URL#${BASE}}" -H 'Accept: application/json')"
+  WS="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.workspaceId||""));')"
+  TOKEN="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.token||""));')"
+  LABEL="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.label||""));')"
+  if [[ -z "$WS" || -z "$TOKEN" ]]; then
+    echo "Redeem failed: setup link did not return a credential (it may already be used or expired)" >&2
+    exit 1
+  fi
+  # The credential's profile is derived from its label (e.g. label "codex" ->
+  # ~/.config/frank/codex/frankrc), so the human never has to set FRANK_PROFILE.
+  # An explicit FRANK_PROFILE still overrides (useful for unusual layouts).
+  PROFILE="${FRANK_PROFILE:-${LABEL}}"
+  if [[ -z "$PROFILE" ]]; then
+    echo "Redeem failed: no agent label in response to derive the profile from" >&2
+    exit 1
+  fi
+  RC_DIR="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/${PROFILE}"
+  mkdir -p "$RC_DIR"
+  umask 077
+  cat > "$RC_DIR/frankrc" <<EOF
+export FRANK_CLOUD_BASE="${BASE}"
+export FRANK_CLOUD_WS="${WS}"
+export FRANK_CLOUD_TOKEN="${TOKEN}"
+EOF
+  printf 'Redeemed. Wrote %s/frankrc (mode 600).\n' "$RC_DIR" >&2
+  # Remind the agent to persist its identity for future runs.
+  printf 'Set FRANK_PROFILE=%s in this agent'\''s own per-agent config (not a shared global shell file like ~/.zshrc) so future runs load its own credential.\n' "$PROFILE" >&2
+  printf '%s\n' "$RESPONSE"
   exit 0
 fi
 

@@ -1,4 +1,4 @@
-export type TokenKind = "agent" | "claim" | "session" | "verify" | "login" | "share";
+export type TokenKind = "agent" | "claim" | "session" | "verify" | "login" | "share" | "setup";
 
 export interface OpaqueToken {
   token: string;
@@ -63,7 +63,7 @@ export async function newOpaqueToken(kind: TokenKind): Promise<OpaqueToken> {
 }
 
 export function newId(
-  kind: "workspace" | "user" | "credential" | "claim" | "session" | "auth" | "email" | "share",
+  kind: "workspace" | "user" | "credential" | "claim" | "session" | "auth" | "email" | "share" | "setup",
 ): string {
   const prefixes = {
     workspace: "wsp",
@@ -74,6 +74,7 @@ export function newId(
     auth: "auth",
     email: "eml",
     share: "shr",
+    setup: "ast",
   } as const;
   return `${prefixes[kind]}_${crypto.randomUUID()}`;
 }

@@ -3,9 +3,12 @@ import {
   cleanupAbandonedWorkspaces,
   clearSessionCookie,
   consumeLoginToken,
+  createAgentCredential,
   createShareToken,
   enforcePublicRequestLimit,
+  listAgentCredentials,
   listShareTokens,
+  redeemAgentSetup,
   requireAgent,
   requireHuman,
   requireShareToken,
@@ -637,6 +640,43 @@ async function handle(
     return jsonResponse({ revoked: true });
   }
 
+  // --- Agent credential provisioning (dashboard "Add agent") ---
+  // The owner mints a new write credential and gets a short-lived, single-use
+  // setup link to paste into the new agent. Redeeming the link returns the
+  // agent's write credential exactly once (see GET /a/{setupToken}).
+
+  // Mint a new agent credential -> setup link (owner-only).
+  const credentialCreate = pathMatch(
+    url.pathname,
+    /^\/v1\/workspaces\/([^/]+)\/agent-credentials$/,
+  );
+  if (request.method === "POST" && credentialCreate) {
+    requireSameOrigin(request, String(env.APP_ORIGIN));
+    const workspaceId = decodeURIComponent(credentialCreate[1]!);
+    await requireHuman(env, request, workspaceId);
+    const body = objectBody(await readJson(request));
+    const provision = await createAgentCredential(
+      env,
+      workspaceId,
+      stringField(body, "label", { max: 120, required: true })!,
+      String(env.APP_ORIGIN),
+      String(env.BOOTSTRAP_TOKEN ?? ""),
+    );
+    return jsonResponse({ provision }, 201);
+  }
+
+  // List active agent credentials (owner-only).
+  const credentialList = pathMatch(
+    url.pathname,
+    /^\/v1\/workspaces\/([^/]+)\/agent-credentials$/,
+  );
+  if (request.method === "GET" && credentialList) {
+    const workspaceId = decodeURIComponent(credentialList[1]!);
+    await requireHuman(env, request, workspaceId);
+    const credentials = await listAgentCredentials(env, workspaceId);
+    return jsonResponse({ credentials });
+  }
+
   const exportRoute = pathMatch(url.pathname, /^\/v1\/workspaces\/([^/]+)\/export$/);
   if (request.method === "GET" && exportRoute) {
     const workspaceId = decodeURIComponent(exportRoute[1]!);
@@ -777,6 +817,20 @@ async function handle(
       allOpenLoops: true,
     });
     return htmlResponse(renderSharedWorkspace(workspaceId, directory, projection));
+  }
+
+  // --- Agent setup link redemption ---
+  // Public, agent-facing. The owner pastes GET /a/{setupToken} into a new
+  // agent; redeeming it returns the provisioned write credential once.
+  const agentSetup = pathMatch(url.pathname, /^\/a\/([^/]+)$/);
+  if (request.method === "GET" && agentSetup) {
+    const provision = await redeemAgentSetup(
+      env,
+      decodeURIComponent(agentSetup[1]!),
+      String(env.BOOTSTRAP_TOKEN ?? ""),
+      String(env.APP_ORIGIN),
+    );
+    return jsonResponse(provision);
   }
 
   return jsonResponse({ error: "Not found" }, 404);
@@ -1096,6 +1150,7 @@ function renderWorkspace(
           <div class="pill" id="updated">Loading…</div>
           <button type="button" id="export-button" class="share-button">Export</button>
           <button type="button" id="share-button" class="share-button">Share</button>
+          <button type="button" id="agents-button" class="share-button">Agents</button>
           <button type="button" id="logout-button" class="logout-button">Sign out</button>
         </div>
       </header>
@@ -1146,6 +1201,18 @@ function renderWorkspace(
       inert
     >
       <div id="shareContent"></div>
+    </aside>
+    <div class="drawer-backdrop" id="agentsBackdrop" hidden></div>
+    <aside
+      class="project-drawer share-drawer"
+      id="agentsDrawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Manage agents"
+      aria-hidden="true"
+      inert
+    >
+      <div id="agentsContent"></div>
     </aside>
     <script src="/assets/cloud-workspace.js" defer></script>
   </body>

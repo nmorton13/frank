@@ -19,6 +19,13 @@ const CLAIM_RESERVATION_MS = 5 * 60 * 1000;
 const LOGIN_TTL_MS = 20 * 60 * 1000;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Agent-provisioning setup tokens are short-lived single-use capabilities: a
+// leaked link stops working after one redeem or once the TTL passes. The
+// provisioned write credential itself is long-lived and revocable. 60 minutes
+// gives an operator room to switch to another agent, install the skill, and
+// redeem, while keeping the leaked-link window bounded. Single-use consumption
+// (not the TTL) is the primary control.
+const AGENT_SETUP_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_LOGIN_CLIENT_CEILING = 20;
 const DEFAULT_LOGIN_GLOBAL_CEILING = 200;
 const DEFAULT_EMAIL_RECIPIENT_CEILING = 3;
@@ -1206,6 +1213,218 @@ export async function listShareTokens(
     .bind(workspaceId)
     .all<{ id: string; prefix: string; createdAt: string; expiresAt: string }>();
   return rows.results;
+}
+
+/** Result of minting a new agent credential for the dashboard "Add agent" flow. */
+export interface AgentProvision {
+  credential: {
+    id: string;
+    label: string;
+    prefix: string;
+    scopes: string[];
+  };
+  setup: {
+    id: string;
+    token: string;
+    prefix: string;
+    expiresAt: string;
+    url: string;
+  };
+}
+
+/**
+ * Mint a new agent credential for an active workspace and return a short-lived,
+ * single-use setup link. The owner pastes the link into a new agent; redeeming
+ * it returns the agent's write credential exactly once.
+ *
+ * The provisioned write credential is stored only as a hash and its plaintext
+ * is derived (never stored) from the setup token, so the plaintext exists in
+ * exactly one place: the redeem response. The setup token itself is stored
+ * hashed, short-TTL'd, and consumed on first redeem.
+ */
+export async function createAgentCredential(
+  env: Env,
+  workspaceId: string,
+  label: string,
+  appOrigin: string,
+  secret: string,
+): Promise<AgentProvision> {
+  if (!/^[a-z0-9_-]+$/.test(label)) {
+    throw new HttpError(400, "Agent label must be lowercase letters, digits, '-' or '_'");
+  }
+  if (label.length > 120) throw new HttpError(400, "Agent label is too long");
+
+  const credentialId = newId("credential");
+  const setup = await newOpaqueToken("setup");
+  const setupId = newId("setup");
+  const scopes = ["read", "write"];
+  const expiresAt = new Date(Date.now() + AGENT_SETUP_TTL_MS).toISOString();
+
+  // Ensure the label is unique among active credentials in the workspace so
+  // the audit trail stays unambiguous.
+  const duplicate = await env.DIRECTORY.prepare(`
+    SELECT 1 FROM agent_credentials
+    WHERE workspace_id = ? AND label = ? AND status = 'active'
+    LIMIT 1
+  `)
+    .bind(workspaceId, label)
+    .first<{ 1: number }>();
+  if (duplicate) throw new HttpError(409, `An agent named '${label}' already exists`);
+
+  await env.DIRECTORY.batch([
+    env.DIRECTORY.prepare(`
+      INSERT INTO agent_credentials (
+        id, workspace_id, token_hash, token_prefix, label, scopes_json
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      credentialId,
+      workspaceId,
+      // Placeholder hash — the real write-credential hash is written at redeem
+      // time. Using the setup token's own hash keeps it unique (token_hash has
+      // a global UNIQUE constraint) without exposing any secret material.
+      setup.hash,
+      `pending-${setup.prefix}`,
+      label,
+      JSON.stringify(scopes),
+    ),
+    env.DIRECTORY.prepare(`
+      INSERT INTO agent_setup_tokens (
+        id, workspace_id, credential_id, token_hash, token_prefix, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      setupId,
+      workspaceId,
+      credentialId,
+      setup.hash,
+      setup.prefix,
+      expiresAt,
+    ),
+  ]);
+
+  return {
+    credential: { id: credentialId, label, prefix: setup.prefix, scopes },
+    setup: {
+      id: setupId,
+      token: setup.token,
+      prefix: setup.prefix,
+      expiresAt,
+      url: `${appOrigin}/a/${encodeURIComponent(setup.token)}`,
+    },
+  };
+}
+
+/**
+ * Redeem a single-use agent setup link. Returns the provisioned write
+ * credential's plaintext once, deriving it from the setup token so it is never
+ * stored in plaintext. Any second redeem (or a redeem after the TTL) fails.
+ */
+export async function redeemAgentSetup(
+  env: Env,
+  setupToken: string,
+  secret: string,
+  appOrigin: string,
+): Promise<{
+  base: string;
+  workspaceId: string;
+  credentialId: string;
+  token: string;
+  prefix: string;
+  label: string;
+  scopes: string[];
+}> {
+  const setupHash = await hashToken(setupToken);
+  const setup = await env.DIRECTORY.prepare(`
+    SELECT ast.credential_id AS credentialId, ast.workspace_id AS workspaceId,
+      ac.label AS label, ac.scopes_json AS scopesJson
+    FROM agent_setup_tokens ast
+    JOIN agent_credentials ac ON ac.id = ast.credential_id
+    JOIN workspaces w ON w.id = ast.workspace_id
+    WHERE ast.token_hash = ?
+      AND ast.used_at IS NULL
+      AND ast.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      AND ac.status = 'active'
+      AND w.state = 'active'
+    LIMIT 1
+  `)
+    .bind(setupHash)
+    .first<{
+      credentialId: string;
+      workspaceId: string;
+      label: string;
+      scopesJson: string;
+    }>();
+  if (!setup) throw new HttpError(410, "Agent setup link is invalid, already used, or expired");
+
+  // Consume the setup token first so a racing second redeem cannot double-issue.
+  const consumed = await env.DIRECTORY.prepare(`
+    UPDATE agent_setup_tokens
+    SET used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = (SELECT id FROM agent_setup_tokens WHERE token_hash = ? LIMIT 1)
+      AND used_at IS NULL
+  `)
+    .bind(setupHash)
+    .run();
+  if (consumed.meta.changes !== 1) {
+    throw new HttpError(410, "Agent setup link is invalid, already used, or expired");
+  }
+
+  // Derive the write credential's plaintext from the setup token so the secret
+  // material is never persisted. The hash stored in agent_credentials was a
+  // placeholder; write the real hash now that we can compute it.
+  const agent = await deriveOpaqueToken("agent", secret, `agent-provision:${setupToken}`);
+  const scopes = JSON.parse(setup.scopesJson) as string[];
+  await env.DIRECTORY.prepare(`
+    UPDATE agent_credentials
+    SET token_hash = ?, token_prefix = ?
+    WHERE id = ? AND status = 'active'
+  `)
+    .bind(agent.hash, agent.prefix, setup.credentialId)
+    .run();
+
+  return {
+    base: appOrigin,
+    workspaceId: setup.workspaceId,
+    credentialId: setup.credentialId,
+    token: agent.token,
+    prefix: agent.prefix,
+    label: setup.label,
+    scopes,
+  };
+}
+
+/**
+ * List a workspace's active agent credentials (never their tokens — the
+ * plaintext is only ever shown once at mint/redeem) so the owner can see which
+ * agents have access and revoke them individually.
+ */
+export async function listAgentCredentials(
+  env: Env,
+  workspaceId: string,
+): Promise<
+  Array<{ id: string; label: string; prefix: string; scopes: string[]; status: string; lastUsedAt: string | null; createdAt: string }>
+> {
+  const rows = await env.DIRECTORY.prepare(`
+    SELECT id, label, token_prefix AS prefix, scopes_json AS scopesJson,
+      status, last_used_at AS lastUsedAt, created_at AS createdAt
+    FROM agent_credentials
+    WHERE workspace_id = ?
+    ORDER BY created_at DESC
+  `)
+    .bind(workspaceId)
+    .all<{
+      id: string;
+      label: string;
+      prefix: string;
+      scopesJson: string;
+      status: string;
+      lastUsedAt: string | null;
+      createdAt: string;
+    }>();
+  return rows.results.map((row) => ({
+    ...row,
+    scopes: JSON.parse(row.scopesJson) as string[],
+    scopesJson: undefined,
+  }));
 }
 
 /**

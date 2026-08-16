@@ -11,6 +11,7 @@ Frank Cloud uses four distinct URL types with very different properties:
 | **Dashboard URL** | `/w/{workspaceId}` | never (bookmark) | yes | No — only opens the dashboard with a valid session |
 | **Login magic link** | `/login#token=…` | 20 minutes | no (single-use) | Yes, a temporary browser session to whoever redeems it first |
 | **Initial claim link** | `/claim#token=…` | 30 minutes | no (single-use) | Yes, temporary ownership of a new workspace |
+| **Agent setup link** | `/a/{setupToken}` | 60 minutes | no (single-use) | Yes, a workspace-scoped write credential to whoever redeems it first |
 | **Share link** | `/s/{shareToken}` | 30 days | yes (until revoked) | Yes, a read-only dashboard view |
 
 Key properties of access control:
@@ -18,6 +19,7 @@ Key properties of access control:
 - A **dashboard URL does not grant access**. It requires a valid, authenticated browser session for that workspace (an owner-bound `frank_session` cookie). Sharing only the dashboard URL does not expose any workspace data.
 - A **login magic link** is a short-lived, single-use authentication capability sent by email. Whoever redeems an unused link first receives a browser session. It must not be shared or forwarded before use, and it currently expires after 20 minutes.
 - An **initial claim link** is a temporary ownership capability returned during workspace bootstrap. It must be delivered securely, used promptly, and never shared. It currently expires after 30 minutes.
+- An **agent setup link** is a short-lived, single-use capability that grants whoever redeems it first a workspace-scoped write credential. It is minted by the owner from the **Agents** dashboard drawer and pasted into a new agent; it must be delivered securely and never shared. It currently expires after 60 minutes.
 - A **share link** is a read-only dashboard view created by the workspace owner. It authorizes only the read-only shared view — it can never close loops, revoke credentials, or export data. The owner can revoke a share token at any time, which immediately invalidates the link. Treat it as a read-only capability.
 - Chrome, Safari, and separate browser profiles each keep their own session cookie. A user can remain signed in on multiple browsers by requesting and redeeming a separate login link in each browser.
 - Browser sessions currently last up to 30 days unless the user logs out or the session is revoked or expired.

@@ -54,6 +54,8 @@ Give an agent the hosted Frank Cloud skill and let it bootstrap a workspace:
 6. The agent runs `remote-check`.
 7. The agent can begin writing entries.
 
+After claiming, you can get your private dashboard URL any time by asking the agent *"What's my Frank dashboard URL?"* — it returns `https://frankagent.dev/w/{workspaceId}`. The URL itself does not grant access; it opens the dashboard when your browser has an authenticated session (sign in with the emailed magic link if needed).
+
 ### Example things to say to your agent
 
 Once set up, just tell your agent what to log and which project it belongs to:
@@ -115,6 +117,7 @@ Frank Cloud uses four distinct URL types. They are not interchangeable:
 
 A few things worth knowing about how access works:
 
+- **Get your dashboard URL from your agent.** Once a workspace is claimed, just ask *"What's my Frank dashboard URL?"* — the agent returns `https://frankagent.dev/w/{workspaceId}`. The URL itself does not grant access; it opens the dashboard when your browser has an authenticated session.
 - Chrome, Safari, and separate browser profiles each keep their own session cookie. A user can stay signed in on multiple browsers by requesting and redeeming a separate login link in each one.
 - Browser sessions currently last up to 30 days unless you log out, or the session is revoked or expired.
 - Workspace IDs are **not** secrets or credentials. Human access requires an owner-bound session cookie; agent access requires a workspace-scoped bearer token.
@@ -129,6 +132,7 @@ The portable skill makes Frank Cloud discoverable and reusable across agents and
 - Agents can follow the hosted skill at `https://frankagent.dev/skills/frank-cloud/SKILL.md` and its `frank-cloud-post.sh` helper.
 - The skill source of truth lives at [`skills/frank-cloud`](skills/frank-cloud) in this repository.
 - Run `node scripts/sync-skill.js` to synchronize the source-of-truth skill into the hosted copy under [`public/skills/frank-cloud`](public/skills/frank-cloud).
+- **Multiple agents, one workspace.** From the claimed dashboard, click **Agents** to mint a new credential and get a single-use setup link; paste it into the new agent. Each agent keeps its own credential under `~/.config/frank/<label>/frankrc` and its own `FRANK_PROFILE`, so the audit trail attributes each write correctly and revoking one agent doesn't affect the others. See the skill's *Connecting additional agents* section.
 
 ## Development and validation
 
