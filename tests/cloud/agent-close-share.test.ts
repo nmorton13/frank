@@ -180,6 +180,8 @@ describe("Frank Cloud agent loop-closing and share links", () => {
     expect(viewHtml).not.toContain('type="checkbox"');
     // No logout button.
     expect(viewHtml).not.toContain("logout-button");
+    // No export button (share viewers cannot export data).
+    expect(viewHtml).not.toContain("export-button");
 
     // A share viewer cannot close a loop (no session, no origin -> 403 from
     // the same-origin check, matching the existing human close route).

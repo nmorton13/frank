@@ -405,6 +405,43 @@ async function revokeShareLink(id) {
 
 document.querySelector("#share-button")?.addEventListener("click", loadShareDrawer);
 
+// Full portable export. Fetches the untruncated dump (human-session-authed)
+// and saves it as a JSON file on the user's machine.
+document.querySelector("#export-button")?.addEventListener("click", async () => {
+  const button = document.getElementById("export-button");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Exporting…";
+  }
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/export?full=1`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Export failed (${response.status})`);
+    }
+    const data = await response.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `frank-backup-${workspaceId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(err.message || "Export failed");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Export";
+    }
+  }
+});
+
 document.addEventListener("click", (event) => {
   if (event.target.closest("#shareBackdrop") || event.target.closest("#shareDrawer .close-drawer")) {
     closeShareDrawer();

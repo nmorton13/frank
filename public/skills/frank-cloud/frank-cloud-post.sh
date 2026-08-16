@@ -26,6 +26,7 @@ Usage:
   frank-cloud-post.sh bootstrap [displayName] [timeZone] [agentLabel] [email]
   frank-cloud-post.sh <note|status|active|todo|blocker|done|decision|session> <text> [project] [tag ...]
   frank-cloud-post.sh close <entry-id>
+  frank-cloud-post.sh backup [outfile.json]   # full untruncated portable dump (default stdout)
   frank-cloud-post.sh list [--type TYPE] [--project PROJECT] [--status STATUS] [--limit N]
   frank-cloud-post.sh open
   frank-cloud-post.sh status-view
@@ -147,7 +148,7 @@ api_post() {
 # at most once per day (cached locally) and print a non-blocking notice to
 # stderr if a newer version is available. The agent/human can then run
 # `skill-update` to refresh. This never blocks or fails a write.
-SKILL_VERSION="2.1.0"
+SKILL_VERSION="2.3.0"
 SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
 SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
 
@@ -268,6 +269,21 @@ fi
 
 if [[ "$TYPE" == "status-view" ]]; then
   api_get "/status"; printf '\n'; exit 0
+fi
+
+if [[ "$TYPE" == "backup" ]]; then
+  OUTFILE="${1:-}"
+  # Full untruncated portable dump via the agent-scoped ?full=1 export path.
+  if [[ -n "$OUTFILE" ]]; then
+    curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+      "${BASE}/v1/workspaces/${WS}/export?full=1" -o "$OUTFILE"
+    printf 'frank-cloud: wrote full backup to %s\n' "$OUTFILE" >&2
+  else
+    curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+      "${BASE}/v1/workspaces/${WS}/export?full=1"
+    printf '\n'
+  fi
+  exit 0
 fi
 
 if [[ "$TYPE" == "projects" ]]; then
