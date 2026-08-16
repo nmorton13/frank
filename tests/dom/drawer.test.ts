@@ -143,3 +143,76 @@ describe("project-history drawer (focused DOM behavior)", () => {
     expect(drawer.querySelector('[data-filter="all"]').getAttribute("aria-pressed")).toBe("false");
   });
 });
+
+function buildShareDom() {
+  const dom = new JSDOM(
+    `<!doctype html>
+<html><body class="cloud-workspace" data-workspace-id="wsp_test">
+  <main>
+    <button id="share-button">Share</button>
+  </main>
+  <div class="drawer-backdrop" id="shareBackdrop" hidden></div>
+  <aside class="project-drawer share-drawer" id="shareDrawer" role="dialog" aria-modal="true" aria-hidden="true" inert>
+    <div id="shareContent"></div>
+  </aside>
+</body></html>`,
+    { url: "https://frank.test/w/wsp_test", runScripts: "dangerously", pretendToBeVisual: true },
+  );
+  dom.window.eval(scriptSource);
+  return dom;
+}
+
+describe("share drawer (read-only share links)", () => {
+  it("opens on Share click and lists active tokens", async () => {
+    const dom = buildShareDom();
+    const drawer = dom.window.document.getElementById("shareDrawer");
+    dom.window.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ tokens: [{ id: "share_1", prefix: "frank_share_abc", expiresAt: "2026-09-01T00:00:00Z" }] }),
+    });
+
+    click(dom, "#share-button");
+    await settle(dom);
+
+    expect(drawer.getAttribute("aria-hidden")).toBe("false");
+    expect(drawer.hasAttribute("inert")).toBe(false);
+    expect(drawer.textContent).toContain("frank_share_abc");
+    expect(drawer.querySelector("[data-revoke-share]")).toBeTruthy();
+  });
+
+  it("creates a share link, shows the copy button, and lists the new token", async () => {
+    const dom = buildShareDom();
+    const drawer = dom.window.document.getElementById("shareDrawer");
+    const shareUrl = "https://frank.test/s/frank_share_newtoken";
+    dom.window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [] }) }) // initial list
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ share: { id: "share_2", prefix: "frank_share_newtoken", url: shareUrl } }) }) // create
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [{ id: "share_2", prefix: "frank_share_newtoken", expiresAt: "2026-09-01T00:00:00Z" }] }) }); // re-list
+
+    click(dom, "#share-button");
+    await settle(dom);
+    click(dom, "[data-create-share]");
+    await settle(dom);
+
+    expect(drawer.querySelector("[data-copy-share]")).toBeTruthy();
+    expect(drawer.textContent).toContain("frank_share_newtoken");
+  });
+
+  it("revokes a token and reloads the list", async () => {
+    const dom = buildShareDom();
+    const drawer = dom.window.document.getElementById("shareDrawer");
+    dom.window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [{ id: "share_1", prefix: "frank_share_abc", expiresAt: "2026-09-01T00:00:00Z" }] }) }) // initial list
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ revoked: true }) }) // revoke
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [] }) }); // reload after revoke
+
+    click(dom, "#share-button");
+    await settle(dom);
+    click(dom, "[data-revoke-share]");
+    await settle(dom);
+
+    expect(drawer.textContent).toContain("No active share links");
+  });
+});

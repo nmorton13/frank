@@ -1129,10 +1129,10 @@ export async function createShareToken(
   const opaque = await newOpaqueToken("share");
   const expiresAt = new Date(Date.now() + SHARE_TTL_MS).toISOString();
   await env.DIRECTORY.prepare(`
-    INSERT INTO share_tokens (id, workspace_id, token_hash, expires_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO share_tokens (id, workspace_id, token_hash, token_prefix, expires_at)
+    VALUES (?, ?, ?, ?, ?)
   `)
-    .bind(id, workspaceId, opaque.hash, expiresAt)
+    .bind(id, workspaceId, opaque.hash, opaque.prefix, expiresAt)
     .run();
   return {
     id,
