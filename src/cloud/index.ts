@@ -980,8 +980,8 @@ function renderWorkspace(
                         <span class="loop-box" aria-hidden="true"></span>
                       </label>
                       <div class="loop-copy">
-                        <strong>${htmlEscape(entry.title || entry.text)}</strong>
-                        ${entry.title ? `<p>${htmlEscape(entry.text)}</p>` : ""}
+                        ${entry.title ? `<strong>${htmlEscape(entry.title)}</strong>` : ""}
+                        <p>${htmlEscape(entry.text)}</p>
                       </div>
                     </li>`,
                     )
@@ -1077,6 +1077,7 @@ function renderWorkspace(
         </div>
         <div class="header-actions">
           <div class="pill" id="updated">Loading…</div>
+          <button type="button" id="share-button" class="share-button">Share</button>
           <button type="button" id="logout-button" class="logout-button">Sign out</button>
         </div>
       </header>
@@ -1115,6 +1116,18 @@ function renderWorkspace(
       inert
     >
       <div id="drawerContent"></div>
+    </aside>
+    <div class="drawer-backdrop" id="shareBackdrop" hidden></div>
+    <aside
+      class="project-drawer share-drawer"
+      id="shareDrawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Share this workspace"
+      aria-hidden="true"
+      inert
+    >
+      <div id="shareContent"></div>
     </aside>
     <script src="/assets/cloud-workspace.js" defer></script>
   </body>
@@ -1160,8 +1173,8 @@ function renderSharedWorkspace(
                       (entry) => `
                     <li class="loop-item" data-entry-id="${entry.id}">
                       <div class="loop-copy">
-                        <strong>${htmlEscape(entry.title || entry.text)}</strong>
-                        ${entry.title ? `<p>${htmlEscape(entry.text)}</p>` : ""}
+                        ${entry.title ? `<strong>${htmlEscape(entry.title)}</strong>` : ""}
+                        <p>${htmlEscape(entry.text)}</p>
                       </div>
                     </li>`,
                     )

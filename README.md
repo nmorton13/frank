@@ -111,7 +111,7 @@ Frank Cloud uses four distinct URL types. They are not interchangeable:
 
 3. **Initial claim link** — a temporary ownership capability returned when a workspace is bootstrapped. Deliver it securely, use it promptly, and never share it. It currently expires after 30 minutes.
 
-4. **Share link** (`/s/{shareToken}`) — a read-only dashboard view created by the workspace owner. Anyone with the link can view the dashboard, but cannot close loops, revoke credentials, or export data. The owner can revoke a share link at any time, which immediately invalidates it. Treat it as a read-only capability: share it only with people you want to see the workspace.
+4. **Share link** (`/s/{shareToken}`) — a read-only dashboard view created by the workspace owner. Anyone with the link can view the dashboard, but cannot close loops, revoke credentials, or export data. The owner can revoke a share link at any time, which immediately invalidates it. Treat it as a read-only capability: share it only with people you want to see the workspace. From the dashboard, use the **Share** button in the header to create, copy, list, and revoke share links.
 
 A few things worth knowing about how access works:
 

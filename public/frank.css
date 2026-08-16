@@ -181,6 +181,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .cloud-workspace.dashboard .pill { border:1px solid var(--frank-rule); background:rgba(255,250,242,.72); color:var(--frank-pencil); border-radius:999px; padding:9px 13px; font-size:13px; white-space:nowrap; }
 .cloud-workspace.dashboard .logout-button { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-ink); border-radius:999px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer; }
 .cloud-workspace.dashboard .logout-button:hover { color:var(--frank-green); border-color:var(--frank-green); }
+.cloud-workspace.dashboard .share-button { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-ink); border-radius:999px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+.cloud-workspace.dashboard .share-button:hover { color:var(--frank-green); border-color:var(--frank-green); }
 .cloud-workspace.dashboard .grid { display:grid; grid-template-columns:1.15fr .85fr; gap:20px; }
 .cloud-workspace.dashboard .column { display:grid; gap:20px; align-content:start; }
 .cloud-workspace.dashboard .card { padding:24px; background:rgba(255,250,242,.86); border:1px solid var(--frank-rule); border-radius:26px; box-shadow:0 18px 50px rgba(40,32,22,.08); backdrop-filter:blur(10px); }
@@ -224,6 +226,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .cloud-workspace.dashboard .loop-type summary::-webkit-details-marker { display:none; }
 .cloud-workspace.dashboard .loop-bullets { list-style:none; margin:8px 0 0 26px; padding:0; display:grid; gap:7px; }
 .cloud-workspace.dashboard .loop-bullets .loop-item { border-top:0; padding-top:0; }
+/* Shared (read-only) view has no completion checkboxes, so loop items are
+   single-column — the copy must span the full width instead of being squeezed
+   into the 30px checkbox column. */
+.cloud-workspace.dashboard.shared-view .loop-item { display:block; }
+.cloud-workspace.dashboard.shared-view .loop-copy strong { display:block; font-size:15px; line-height:1.35; }
+.cloud-workspace.dashboard.shared-view .loop-copy p { margin:7px 0 0; color:var(--frank-pencil); line-height:1.5; }
 .cloud-workspace.dashboard .project-button { all:unset; cursor:pointer; color:var(--frank-ink); font-weight:680; }
 .cloud-workspace.dashboard .project-button:hover { color:var(--frank-green); text-decoration:underline; }
 .cloud-workspace.dashboard .drawer-backdrop { position:fixed; inset:0; background:rgba(34,32,29,.28); opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:10; }
@@ -238,6 +246,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .cloud-workspace.dashboard .filter-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
 .cloud-workspace.dashboard .filter-chip { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-pencil); border-radius:999px; padding:6px 10px; cursor:pointer; font-weight:700; }
 .cloud-workspace.dashboard .filter-chip.active { color:var(--frank-green); background:#dcfce7; border-color:#bbf7d0; }
+.cloud-workspace.dashboard .share-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.cloud-workspace.dashboard .share-create { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-ink); border-radius:999px; padding:9px 16px; font-size:13px; font-weight:700; cursor:pointer; }
+.cloud-workspace.dashboard .share-create:hover { color:var(--frank-green); border-color:var(--frank-green); }
+.cloud-workspace.dashboard .share-copy { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-ink); border-radius:999px; padding:9px 16px; font-size:13px; font-weight:700; cursor:pointer; }
+.cloud-workspace.dashboard .share-copy:hover { color:var(--frank-green); border-color:var(--frank-green); }
+.cloud-workspace.dashboard .share-copy:disabled { opacity:.5; cursor:default; }
+.cloud-workspace.dashboard .share-note { color:var(--frank-pencil); font-size:13px; margin:0 0 16px; }
+.cloud-workspace.dashboard .share-list { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+.cloud-workspace.dashboard .share-item { border:1px solid var(--frank-rule); border-radius:16px; padding:12px; background:rgba(255,255,255,.35); display:flex; justify-content:space-between; gap:12px; align-items:center; }
+.cloud-workspace.dashboard .share-item-meta { display:grid; gap:2px; }
+.cloud-workspace.dashboard .share-item-prefix { font-weight:700; font-size:14px; }
+.cloud-workspace.dashboard .share-item-expiry { color:var(--frank-pencil); font-size:12px; }
+.cloud-workspace.dashboard .share-revoke { border:1px solid var(--frank-rule); background:#fffaf2; color:var(--frank-ink); border-radius:999px; padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+.cloud-workspace.dashboard .share-revoke:hover { color:#b91c1c; border-color:#fca5a5; }
+.cloud-workspace.dashboard .share-empty { color:var(--frank-pencil); font-style:italic; padding:12px 2px; }
 .cloud-workspace.dashboard .timeline { display:grid; gap:10px; }
 .cloud-workspace.dashboard .timeline-item { border:1px solid var(--frank-rule); border-radius:16px; padding:12px; background:rgba(255,255,255,.35); }
 .cloud-workspace.dashboard .timeline-item.closed { opacity:.68; }

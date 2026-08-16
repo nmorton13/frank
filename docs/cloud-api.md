@@ -62,10 +62,12 @@ No workspace route accepts a token/session belonging only to another workspace o
 
 A workspace owner can create a **read-only** dashboard share link. The share token is returned once in plaintext and stored only as a SHA-256 hash. It authorizes only the read-only shared dashboard view — it can never close loops, revoke credentials, or export data. The owner can revoke a share token at any time, which immediately invalidates the link.
 
+The owner dashboard exposes this through a **Share** button in the header. It opens a drawer to create a link, copy the freshly-minted URL, list active tokens, and revoke them. The full share URL is a capability shown only once at creation; the list endpoint returns each token's `prefix` and `expiresAt` for display, not the full URL.
+
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `POST` | `/v1/workspaces/{workspaceId}/share` | Create a share token (owner-only, same-origin). Returns `{share:{id,prefix,expiresAt,url}}`. |
-| `GET` | `/v1/workspaces/{workspaceId}/share` | List active share tokens (owner-only). |
+| `GET` | `/v1/workspaces/{workspaceId}/share` | List active share tokens (owner-only). Returns `{tokens:[{id,prefix,createdAt,expiresAt}]}` — prefix only, never the full URL. |
 | `POST` | `/v1/workspaces/{workspaceId}/share/{shareTokenId}/revoke` | Revoke a share token (owner-only, same-origin). |
 | `GET` | `/s/{shareToken}` | Read-only shared dashboard view (share-token authenticated). |
 

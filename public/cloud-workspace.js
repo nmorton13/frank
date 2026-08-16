@@ -55,8 +55,8 @@ function groupOpenLoops(entries) {
                       <span class="loop-box" aria-hidden="true"></span>
                     </label>
                     <div class="loop-copy">
-                      <strong>${esc(entry.title || entry.text)}</strong>
-                      ${entry.title ? `<p>${esc(entry.text)}</p>` : ""}
+                      ${entry.title ? `<strong>${esc(entry.title)}</strong>` : ""}
+                      <p>${esc(entry.text)}</p>
                     </div>
                   </li>`,
                   )
@@ -273,6 +273,166 @@ document.querySelector("#logout-button")?.addEventListener("click", async () => 
   if (response.ok) location.replace("/login");
 });
 
+// --- Read-only share links ---
+// The owner can create a share link (returned once, full URL), copy it, list
+// active tokens, and revoke them. The list endpoint only returns token
+// prefixes (the full URL is a capability shown once at creation), so the copy
+// button is only offered for a link created in this session.
+let lastCreatedShareUrl = null;
+
+function openShareDrawer() {
+  const backdrop = document.getElementById("shareBackdrop");
+  const drawer = document.getElementById("shareDrawer");
+  drawer.removeAttribute("inert");
+  backdrop.hidden = false;
+  requestAnimationFrame(() => {
+    backdrop.classList.add("open");
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    const first = drawer.querySelector("button, [href], input");
+    if (first) first.focus();
+  });
+}
+
+function closeShareDrawer() {
+  const backdrop = document.getElementById("shareBackdrop");
+  const drawer = document.getElementById("shareDrawer");
+  backdrop.classList.remove("open");
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  drawer.setAttribute("inert", "");
+  setTimeout(() => {
+    backdrop.hidden = true;
+  }, 220);
+  document.getElementById("share-button")?.focus();
+}
+
+function renderShareDrawer({ createdUrl = null, tokens = [], error = null }) {
+  lastCreatedShareUrl = createdUrl;
+  const created = createdUrl
+    ? `<div class="share-actions">
+        <button type="button" class="share-copy" data-copy-share>Copy link</button>
+      </div>
+      <p class="share-note">Anyone with this link can view the dashboard read-only. It cannot close loops or change data. Copy it now — the full link is shown only once.</p>`
+    : "";
+  const list = tokens.length
+    ? `<ul class="share-list">${tokens
+        .map(
+          (t) => `<li class="share-item">
+            <div class="share-item-meta">
+              <span class="share-item-prefix">${esc(t.prefix)}</span>
+              <span class="share-item-expiry">Expires ${esc(t.expiresAt)}</span>
+            </div>
+            <button type="button" class="share-revoke" data-revoke-share="${esc(t.id)}">Revoke</button>
+          </li>`,
+        )
+        .join("")}</ul>`
+    : '<p class="share-empty">No active share links.</p>';
+  const err = error ? `<p class="share-note" style="color:#b91c1c">${esc(error)}</p>` : "";
+  document.getElementById("shareContent").innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <div class="kicker">share</div>
+        <h2>Share this workspace</h2>
+        <p class="sub">Create a read-only link for others to view the dashboard.</p>
+      </div>
+      <button class="close-drawer" type="button" aria-label="Close">×</button>
+    </div>
+    <section class="drawer-section">
+      <div class="share-actions">
+        <button type="button" class="share-create" data-create-share>Create share link</button>
+      </div>
+      ${created}
+      ${err}
+      <h3>Active share links</h3>
+      ${list}
+    </section>`;
+}
+
+async function loadShareDrawer() {
+  renderShareDrawer({ tokens: [] });
+  openShareDrawer();
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/share`,
+      { cache: "no-store" },
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load share links");
+    renderShareDrawer({ tokens: data.tokens || [] });
+  } catch (err) {
+    renderShareDrawer({ tokens: [], error: err.message });
+  }
+}
+
+async function createShareLink() {
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/share`,
+      { method: "POST", headers: { Accept: "application/json" } },
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not create share link");
+    const url = data.share && data.share.url;
+    if (!url) throw new Error("Share link was not returned");
+    // Reload the token list so the new token appears under "Active share links".
+    const listResponse = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/share`,
+      { cache: "no-store" },
+    );
+    const listData = await listResponse.json();
+    renderShareDrawer({ createdUrl: url, tokens: listData.tokens || [] });
+  } catch (err) {
+    renderShareDrawer({ tokens: [], error: err.message });
+  }
+}
+
+async function revokeShareLink(id) {
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/share/${encodeURIComponent(id)}/revoke`,
+      { method: "POST", headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Could not revoke share link");
+    }
+    await loadShareDrawer();
+  } catch (err) {
+    renderShareDrawer({ tokens: [], error: err.message });
+  }
+}
+
+document.querySelector("#share-button")?.addEventListener("click", loadShareDrawer);
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("#shareBackdrop") || event.target.closest("#shareDrawer .close-drawer")) {
+    closeShareDrawer();
+    return;
+  }
+  if (event.target.closest("[data-create-share]")) {
+    createShareLink();
+    return;
+  }
+  if (event.target.closest("[data-copy-share]")) {
+    if (lastCreatedShareUrl) {
+      navigator.clipboard.writeText(lastCreatedShareUrl).then(() => {
+        const btn = event.target.closest("[data-copy-share]");
+        if (btn) {
+          const original = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(() => (btn.textContent = original), 1500);
+        }
+      });
+    }
+    return;
+  }
+  const revoke = event.target.closest("[data-revoke-share]");
+  if (revoke) {
+    revokeShareLink(revoke.dataset.revokeShare);
+  }
+});
+
 // Project drawer + filters.
 document.addEventListener("click", (event) => {
   const projectButton = event.target.closest("[data-project]");
@@ -376,3 +536,6 @@ async function refreshDashboard() {
 }
 
 setInterval(refreshDashboard, 30000);
+// Refresh immediately on load so the "Updated" pill and live data don't sit on
+// "Loading…" until the first 30-second tick.
+refreshDashboard();

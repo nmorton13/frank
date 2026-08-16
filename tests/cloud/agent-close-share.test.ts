@@ -152,6 +152,20 @@ describe("Frank Cloud agent loop-closing and share links", () => {
     };
     expect(createBody.share.url).toMatch(/^https:\/\/frank\.test\/s\/frank_share_/);
 
+    // Owner can list active share tokens (prefix + expiry) — regression guard
+    // for the token_prefix column that the list endpoint reads.
+    const list = await exports.default.fetch(
+      `https://frank.test/v1/workspaces/${workspace.workspace.id}/share`,
+      { headers: { cookie } },
+    );
+    expect(list.status).toBe(200);
+    const listBody = (await list.json()) as { tokens: Array<{ id: string; prefix: string; expiresAt: string }> };
+    expect(listBody.tokens).toHaveLength(1);
+    const listed = listBody.tokens[0]!;
+    expect(listed.id).toBe(createBody.share.id);
+    expect(listed.prefix).toBe(createBody.share.prefix);
+    expect(listed.expiresAt).toBeTruthy();
+
     // A share viewer (no session) can read the dashboard.
     const shareUrl = new URL(createBody.share.url);
     const shareToken = shareUrl.pathname.split("/").pop()!;
