@@ -1,7 +1,7 @@
 ---
 name: frank-cloud
 description: Log work notes, todos, blockers, status to Frank Cloud. Use when the user asks to log work to Frank, update status, mark a todo, or set up Frank. Requires bash + curl + Node.js (Claude Code, Codex, Cursor, Copilot, Hermes).
-version: 2.3.0
+version: 2.3.1
 compatibility: Requires a reachable Frank Cloud API. Bootstrap is public (no token needed). After setup, FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN are required (or auto-loaded from ~/.config/frank/frankrc). Needs bash, curl, and Node.js (used for URL/JSON encoding).
 ---
 
@@ -158,6 +158,26 @@ frank-cloud-post.sh skill-update   # fetch the latest hosted skill + helper
 ```
 
 The helper checks the hosted skill version at most once per day (cached locally) and prints a non-blocking notice to stderr when a newer version is available. It never blocks or fails a write. To update, run `frank-cloud-post.sh skill-update` (or ask your agent to update and tell you what's new).
+
+### Keeping the skill updated
+
+Frank's skill is portable and self-updating. When a newer version is published to the hosted skill (the copy the Worker serves at `/skills/frank-cloud/`), the helper:
+
+1. Notices the version drift the next time it runs a write (checked at most once per day).
+2. Prints a non-blocking notice to stderr like:
+   ```
+   frank-cloud: a newer skill version (2.3.1) is available (installed 2.3.0).
+   frank-cloud: run `frank-cloud-post.sh skill-update` to refresh, or ask your agent to update.
+   ```
+3. Leaves the write untouched — the notice never blocks or fails a write.
+
+To update, run:
+```bash
+frank-cloud-post.sh skill-update
+```
+or ask your agent: *"Update the Frank skill."* The helper fetches the latest hosted `SKILL.md` and `frank-cloud-post.sh`, writes them over the local copies, and clears the version cache so the next run reflects the new version.
+
+**Where files land:** the helper detects the skill root (the directory containing `SKILL.md`) whether the helper sits flat next to it (manual / hosted-copy install) or in a `scripts/` subdirectory (skill-manager install such as `~/.hermes/skills/...`). Updates always land in the correct places.
 
 The bootstrap helper prints its generated retry key to stderr. If the request outcome is uncertain, rerun the same bootstrap command with that value as `FRANK_BOOTSTRAP_IDEM_KEY`.
 

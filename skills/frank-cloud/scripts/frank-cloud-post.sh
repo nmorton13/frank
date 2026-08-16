@@ -148,7 +148,7 @@ api_post() {
 # at most once per day (cached locally) and print a non-blocking notice to
 # stderr if a newer version is available. The agent/human can then run
 # `skill-update` to refresh. This never blocks or fails a write.
-SKILL_VERSION="2.3.0"
+SKILL_VERSION="2.3.1"
 SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
 SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
 
@@ -191,8 +191,21 @@ maybe_check_skill_update() {
 
 # Fetch the latest hosted skill + helper and overwrite the local copies.
 skill_update() {
-  local dir
-  dir="$(_skill_dir)"
+  local script_dir helper_path skill_root
+  script_dir="$(_skill_dir)"
+  helper_path="$script_dir/frank-cloud-post.sh"
+  # The skill root is the directory that contains SKILL.md. When the helper
+  # sits flat next to SKILL.md (hosted-copy / manual install) that is
+  # `script_dir`; when it is in a `scripts/` subdir (skill-manager install,
+  # e.g. ~/.hermes/skills/...) the root is the parent directory. Detect by
+  # checking where SKILL.md actually lives so updates never land in scripts/.
+  if [[ -f "$script_dir/SKILL.md" ]]; then
+    skill_root="$script_dir"
+  elif [[ -f "${script_dir%/*}/SKILL.md" ]]; then
+    skill_root="${script_dir%/*}"
+  else
+    skill_root="$script_dir"
+  fi
   local tmp_skill tmp_helper
   tmp_skill="$(mktemp)"
   tmp_helper="$(mktemp)"
@@ -213,11 +226,11 @@ skill_update() {
     echo "frank-cloud: refusing to install a helper that is not a bash script" >&2
     return 1
   fi
-  cp "$tmp_skill" "$dir/SKILL.md"
-  cp "$tmp_helper" "$dir/frank-cloud-post.sh"
-  chmod +x "$dir/frank-cloud-post.sh"
+  cp "$tmp_skill" "$skill_root/SKILL.md"
+  cp "$tmp_helper" "$helper_path"
+  chmod +x "$helper_path"
   rm -f "$SKILL_CACHE"
-  echo "frank-cloud: skill updated to $(sed -n 's/^version:[[:space:]]*//p' "$dir/SKILL.md" | head -1)"
+  echo "frank-cloud: skill updated to $(sed -n 's/^version:[[:space:]]*//p' "$skill_root/SKILL.md" | head -1)"
 }
 
 if [[ "$TYPE" == "skill-update" ]]; then
