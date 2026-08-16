@@ -55,6 +55,7 @@ The private dashboard and human API require the `frank_session` cookie. Ownershi
 | `PATCH` | `/v1/workspaces/{workspaceId}/entries/{entryId}/close` | Same-origin open-loop completion. |
 | `POST` | `/v1/workspaces/{workspaceId}/agent-credentials/{credentialId}/revoke` | Same-origin agent revocation. |
 | `GET` | `/v1/workspaces/{workspaceId}/export` | Bounded export with per-collection `truncated` flags. |
+| `GET` | `/v1/workspaces/{workspaceId}/export?full=1` | Full untruncated portable dump (agent bearer read scope, or owner human session). |
 
 No workspace route accepts a token/session belonging only to another workspace owner. One verified user may own up to the configured workspace ceiling.
 

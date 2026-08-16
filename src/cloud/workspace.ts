@@ -925,6 +925,36 @@ export class Workspace extends DurableObject<Env> {
     });
   }
 
+  /**
+   * Full, untruncated portable backup of every entry, project, alias, and daily
+   * summary. No response-byte or row ceilings: the caps that bound `exportData`
+   * exist to keep dashboard/API responses small, not because the data is big.
+   * Entries use the same API shape (structuredJson parsed, project name resolved)
+   * so an agent can re-ingest them through the normal write path. Intended for
+   * agent-driven portability; human dashboard export remains the capped version.
+   */
+  exportDataFull(): string {
+    const rawEntries = this.ctx.storage.sql
+      .exec<EntryRow>(`${ENTRY_SELECT} ORDER BY e.created_at, e.id`)
+      .toArray()
+      .map(toEntry);
+    const projects = this.ctx.storage.sql
+      .exec("SELECT * FROM projects ORDER BY id")
+      .toArray();
+    const aliases = this.ctx.storage.sql
+      .exec("SELECT * FROM project_aliases ORDER BY normalized_alias")
+      .toArray();
+    const summaries = this.ctx.storage.sql
+      .exec("SELECT * FROM daily_summaries ORDER BY summary_date")
+      .toArray();
+    return JSON.stringify({
+      projects,
+      aliases,
+      entries: rawEntries,
+      summaries,
+    });
+  }
+
   private allEntries(): WorkspaceEntry[] {
     return this.ctx.storage.sql
       .exec<EntryRow>(`${ENTRY_SELECT} ORDER BY e.created_at DESC, e.id DESC`)

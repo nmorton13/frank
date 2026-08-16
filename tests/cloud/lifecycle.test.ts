@@ -420,6 +420,8 @@ describe("Frank Cloud private dashboard", () => {
     expect(html).toContain('aria-label="Project history"');
     expect(html).toContain('aria-hidden="true"');
     expect(html).toContain("inert");
+    // Owner dashboard exposes the full portable export button (share view does not).
+    expect(html).toContain('id="export-button"');
   });
 
   it("serves human-authenticated project history for the drawer", async () => {

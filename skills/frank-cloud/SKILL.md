@@ -1,7 +1,7 @@
 ---
 name: frank-cloud
 description: Log work notes, todos, blockers, status to Frank Cloud. Use when the user asks to log work to Frank, update status, mark a todo, or set up Frank. Requires bash + curl + Node.js (Claude Code, Codex, Cursor, Copilot, Hermes).
-version: 2.1.0
+version: 2.3.0
 compatibility: Requires a reachable Frank Cloud API. Bootstrap is public (no token needed). After setup, FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN are required (or auto-loaded from ~/.config/frank/frankrc). Needs bash, curl, and Node.js (used for URL/JSON encoding).
 ---
 
@@ -138,6 +138,7 @@ frank-cloud-post.sh summary today
 
 # Close a loop (agents can close any open todo/blocker)
 frank-cloud-post.sh close <entry-id>
+frank-cloud-post.sh backup [outfile.json]  # full untruncated portable dump (default stdout)
 
 # Project lifecycle (only when asked to clean up project names)
 frank-cloud-post.sh project rename "Old Name" "New Name"
@@ -159,6 +160,59 @@ frank-cloud-post.sh skill-update   # fetch the latest hosted skill + helper
 The helper checks the hosted skill version at most once per day (cached locally) and prints a non-blocking notice to stderr when a newer version is available. It never blocks or fails a write. To update, run `frank-cloud-post.sh skill-update` (or ask your agent to update and tell you what's new).
 
 The bootstrap helper prints its generated retry key to stderr. If the request outcome is uncertain, rerun the same bootstrap command with that value as `FRANK_BOOTSTRAP_IDEM_KEY`.
+
+## Speaking naturally to your agent
+
+You don't have to quote helper commands. Tell your agent what you want in plain words and it will translate. Common phrasings:
+
+```text
+"Add a todo to project Frank: write up the Access migration decision."
+"Have Frank log a note to the docs project about the backup format."
+"Frank, add a blocker to project X: waiting on the design sign-off."
+"Set my current status to: finishing the portability docs."
+"Make a decision entry in project Y: we're going with the JSON export approach."
+"Log a session for today's work on project Z."
+"Put a done entry in project Q: deployed the export button."
+"Close the todo about the trailing space bug."
+"What open loops are in project Frank?"   /   "What's my current status?"
+```
+
+The mapping is simple: an entry type (note/todo/blocker/status/done/decision/session) plus a project, and optionally tags. If you only say "log this to Frank" the agent will pick a sensible type and project (defaulting to the active project or "Frank").
+
+## Portability: backup and restore
+
+Frank's portability model is a **full portable JSON export + agent re-ingest through the normal write API**. There is no restore endpoint — to move a workspace, you export the data and have an agent replay it into the new workspace.
+
+**Back up (to a file):**
+```bash
+frank-cloud-post.sh backup /tmp/frank-backup.json
+```
+
+**Back up (to stdout):**
+```bash
+frank-cloud-post.sh backup
+```
+
+**From the dashboard:** click **Export** in the header — it downloads `frank-backup-{workspaceId}.json` (owner session only; share viewers cannot export).
+
+Say it naturally:
+```text
+"Back up my Frank data to ~/frank-backup.json."
+"Tell Frank to export everything."
+```
+
+**Put it back (move to a fresh workspace):**
+```text
+"Here's my old Frank backup at /tmp/frank-backup.json. Fire up a new workspace
+and re-create the projects and todos from it."
+```
+
+The agent reads the JSON and replays entries through `POST /entries`. Two caveats:
+
+- **Timestamps flatten.** Re-ingested entries get `created_at = now`; the original timeline is not preserved. The decision to accept this is documented in Frank.
+- **Open vs closed state.** Re-ingest recreates entries as open; if you need closed loops, the agent should mark them done after importing.
+
+A backup is a snapshot of your workspace content (entries, projects, aliases, daily summaries). It is a portable archive you can move between deployments or keep as an off-site copy.
 
 ## Idempotency
 
@@ -182,6 +236,8 @@ POST /v1/workspaces/{ws}/entries                 create entry (idempotency-key r
 GET  /v1/workspaces/{ws}/entries                 list entries (?type=&project=&status=&limit=)
 GET  /v1/workspaces/{ws}/open                    open loops (todos + blockers)
 GET  /v1/workspaces/{ws}/status                  status projection
+GET  /v1/workspaces/{ws}/export                  capped human dashboard export (100 entries, 30 summaries, 1MB)
+GET  /v1/workspaces/{ws}/export?full=1           full untruncated portable dump (agent bearer read scope, or owner human session)
 GET  /v1/workspaces/{ws}/projects                list projects (?all=true&limit=100&offset=0)
 GET  /v1/workspaces/{ws}/projects/{name}/entries project history
 GET  /v1/workspaces/{ws}/summary?date=today      deterministic daily summary
@@ -285,6 +341,7 @@ Frank uses four URL types. Do not confuse them, and never pass a capability URL 
 
 Access model:
 
+- **Get your dashboard URL from your agent.** Once a workspace is claimed, just ask: *"What's my Frank dashboard URL?"* — the agent knows the workspace ID and returns `https://frankagent.dev/w/{workspaceId}`. The URL itself does not grant access; it only opens the dashboard when the browser already has an authenticated session.
 - Chrome, Safari, and separate browser profiles each keep their own session cookie. A user can stay signed in on several browsers by redeeming a separate login link in each.
 - Browser sessions currently last up to 30 days unless logged out, revoked, or expired.
 - Workspace IDs are **not** secrets or credentials. Human access requires an owner-bound session cookie; agent access requires a workspace-scoped bearer token.

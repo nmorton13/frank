@@ -646,6 +646,36 @@ describe("Frank Cloud security regressions", () => {
     expect(eventOverflow).toMatchObject({ kind: "error", status: 429 });
   });
 
+  it("serves a full untruncated export to an agent with read scope", async () => {
+    const ws = env.WORKSPACES.getByName(`full-export-${crypto.randomUUID()}`);
+    const largeStructured = { payload: "x".repeat(60_000) };
+    for (let index = 0; index < 20; index += 1) {
+      const created = await ws.createEntry({
+        type: index % 2 === 0 ? "note" : "todo",
+        text: `full entry ${index}`,
+        structuredJson: largeStructured,
+        tags: [],
+        source: "full-export-test",
+        actor: { type: "agent", id: "full-export-agent" },
+        idempotencyKey: `full-${index}`,
+        requestHash: `full-hash-${index}`,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      });
+      if (created.kind !== "created") {
+        throw new Error(`entry ${index}: ${JSON.stringify(created)}`);
+      }
+    }
+    // The capped export truncates at the 1MB response ceiling (20 × 60KB > 1MB);
+    // the full export carries every entry with no truncation flags.
+    const capped = await ws.exportData();
+    const cappedParsed = JSON.parse(capped) as { truncated: Record<string, boolean> };
+    expect(Object.values(cappedParsed.truncated).some(Boolean)).toBe(true);
+    const full = await ws.exportDataFull();
+    expect(full).not.toContain('"truncated"');
+    const parsed = JSON.parse(full) as { entries: { id: number }[] };
+    expect(parsed.entries).toHaveLength(20);
+  });
+
   it("closes loops at entry capacity without creating another row", async () => {
     const ws = env.WORKSPACES.getByName(`close-cap-${crypto.randomUUID()}`);
     let todoId = 0;
@@ -727,6 +757,33 @@ describe("Frank Cloud security regressions", () => {
     expect(expiredBootstrap?.count).toBe(0);
     expect(expiredAuth?.count).toBe(0);
     expect(expiredSessions?.count).toBe(0);
+  });
+
+  it("gates the agent full export behind bearer auth and returns untruncated data", async () => {
+    const workspace = await bootstrap("full-export-route");
+    await exports.default.fetch(
+      `https://frank.test/v1/workspaces/${workspace.workspace.id}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `route-full-${crypto.randomUUID()}`,
+          authorization: `Bearer ${workspace.agentCredential.token}`,
+        },
+        body: JSON.stringify({ type: "note", text: "route full export entry", source: "full-export-test" }),
+      },
+    );
+    const unauthorized = await exports.default.fetch(
+      `https://frank.test/v1/workspaces/${workspace.workspace.id}/export?full=1`,
+    );
+    expect(unauthorized.status).toBe(401);
+    const authorized = await exports.default.fetch(
+      `https://frank.test/v1/workspaces/${workspace.workspace.id}/export?full=1`,
+      { headers: { authorization: `Bearer ${workspace.agentCredential.token}` } },
+    );
+    expect(authorized.status).toBe(200);
+    const body = (await authorized.json()) as { entries: { text: string }[] };
+    expect(body.entries.some((entry) => entry.text === "route full export entry")).toBe(true);
   });
 
   it("applies security headers to HTML, JSON, assets, and redirects", async () => {

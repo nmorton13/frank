@@ -640,6 +640,23 @@ async function handle(
   const exportRoute = pathMatch(url.pathname, /^\/v1\/workspaces\/([^/]+)\/export$/);
   if (request.method === "GET" && exportRoute) {
     const workspaceId = decodeURIComponent(exportRoute[1]!);
+    // Full untruncated portable dump. The plain (no ?full=1) export stays the
+    // capped human dashboard export; ?full=1 is available to an agent bearer
+    // (read scope) or the workspace owner's human session for re-ingest.
+    if (url.searchParams.get("full") === "1") {
+      // Full portable dump: available to an agent bearer (read scope) or the
+      // workspace owner's human session. The dashboard export button uses the
+      // human session; agents use their bearer token.
+      if (request.headers.get("authorization")) {
+        await requireAgent(env, request, workspaceId, "read");
+      } else {
+        await requireHuman(env, request, workspaceId);
+      }
+      const data = JSON.parse(
+        await env.WORKSPACES.getByName(workspaceId).exportDataFull(),
+      ) as Record<string, unknown>;
+      return jsonResponse({ workspaceId, ...data });
+    }
     await requireHuman(env, request, workspaceId);
     const data = JSON.parse(
       await env.WORKSPACES.getByName(workspaceId).exportData(),
@@ -1077,6 +1094,7 @@ function renderWorkspace(
         </div>
         <div class="header-actions">
           <div class="pill" id="updated">Loading…</div>
+          <button type="button" id="export-button" class="share-button">Export</button>
           <button type="button" id="share-button" class="share-button">Share</button>
           <button type="button" id="logout-button" class="logout-button">Sign out</button>
         </div>

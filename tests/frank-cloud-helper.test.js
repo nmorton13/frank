@@ -156,6 +156,24 @@ async function main() {
     const listOut = runHelper(["list", "--project", "Integration Project"]);
     assert.match(listOut, /integration note text/, "note readable back");
 
+    // 8b. Full backup to a file and back from stdout both carry the note.
+    const backupFile = `${os.tmpdir()}/frank-backup-${process.pid}.json`;
+    try {
+      runHelper(["backup", backupFile]); // writes file (notice goes to stderr)
+      const fromFile = JSON.parse(fs.readFileSync(backupFile, "utf8"));
+      assert.ok(
+        JSON.stringify(fromFile.entries).includes("integration note text"),
+        "backup file contains the note",
+      );
+      const fromStdout = JSON.parse(runHelper(["backup"]));
+      assert.ok(
+        JSON.stringify(fromStdout.entries).includes("integration note text"),
+        "backup stdout contains the note",
+      );
+    } finally {
+      try { fs.unlinkSync(backupFile); } catch {}
+    }
+
     // 9. Exercise project history.
     assert.match(runHelper(["history", "Integration Project"]), /integration note text/, "history");
 
