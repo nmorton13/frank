@@ -405,6 +405,163 @@ async function revokeShareLink(id) {
 
 document.querySelector("#share-button")?.addEventListener("click", loadShareDrawer);
 
+// --- Agent credential provisioning ("Add agent") ---
+// The owner mints a new write credential and gets a short-lived, single-use
+// setup link to paste into a new agent. The list shows active credentials with
+// a revoke button; revoked credentials remain visible but marked revoked.
+let lastCreatedSetupUrl = null;
+
+function openAgentsDrawer() {
+  const backdrop = document.getElementById("agentsBackdrop");
+  const drawer = document.getElementById("agentsDrawer");
+  drawer.removeAttribute("inert");
+  backdrop.hidden = false;
+  requestAnimationFrame(() => {
+    backdrop.classList.add("open");
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    const first = drawer.querySelector("button, [href], input");
+    if (first) first.focus();
+  });
+}
+
+function closeAgentsDrawer() {
+  const backdrop = document.getElementById("agentsBackdrop");
+  const drawer = document.getElementById("agentsDrawer");
+  backdrop.classList.remove("open");
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  setTimeout(() => {
+    backdrop.hidden = true;
+  }, 220);
+  document.getElementById("agents-button")?.focus();
+}
+
+function renderAgentsDrawer({ createdUrl = null, credentials = [], error = null }) {
+  lastCreatedSetupUrl = createdUrl;
+  const created = createdUrl
+    ? `<div class="share-actions">
+        <button type="button" class="share-copy" data-copy-agent-setup>Copy setup link</button>
+      </div>
+      <p class="share-note">Paste this link into the new agent (for example: <em>Read @url:&lt;link&gt;</em>). The link is single-use and expires in 60 minutes; the agent redeems it to receive its write credential. Copy it now — it is shown only once.</p>`
+    : "";
+  const list = credentials.length
+    ? `<ul class="share-list">${credentials
+        .map(
+          (c) => `<li class="share-item">
+            <div class="share-item-meta">
+              <span class="share-item-prefix">${esc(c.label)}${c.status === "revoked" ? " (revoked)" : ""}</span>
+              <span class="share-item-expiry">${esc(c.prefix)}</span>
+            </div>
+            ${c.status === "active" ? `<button type="button" class="share-revoke" data-revoke-agent="${esc(c.id)}">Revoke</button>` : ""}
+          </li>`,
+        )
+        .join("")}</ul>`
+    : '<p class="share-empty">No agent credentials yet.</p>';
+  const err = error ? `<p class="share-note" style="color:#b91c1c">${esc(error)}</p>` : "";
+  document.getElementById("agentsContent").innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <div class="kicker">agents</div>
+        <h2>Connect an agent</h2>
+        <p class="sub">Mint a credential for a new agent (Claude, Codex, Cursor, Hermes, …) and hand it a one-time setup link.</p>
+      </div>
+      <button class="close-drawer" type="button" aria-label="Close">×</button>
+    </div>
+    <section class="drawer-section">
+      <form id="agent-create-form" class="share-actions">
+        <input id="agent-label" name="label" type="text" placeholder="agent label (e.g. claude)" maxlength="120" required aria-label="Agent label">
+        <button type="submit" class="share-create" data-create-agent>Add agent</button>
+      </form>
+      ${created}
+      ${err}
+      <h3>Agent credentials</h3>
+      ${list}
+    </section>`;
+  document.getElementById("agentsContent").querySelector(".close-drawer")?.addEventListener("click", closeAgentsDrawer);
+  document.getElementById("agentsContent").querySelector("#agent-create-form")?.addEventListener("submit", createAgentSetup);
+  document.getElementById("agentsContent").querySelector("[data-copy-agent-setup]")?.addEventListener("click", copyAgentSetupLink);
+  document.getElementById("agentsContent").querySelectorAll("[data-revoke-agent]").forEach((btn) =>
+    btn.addEventListener("click", () => revokeAgentCredential(btn.getAttribute("data-revoke-agent"))),
+  );
+}
+
+async function loadAgentsDrawer() {
+  renderAgentsDrawer({ credentials: [] });
+  openAgentsDrawer();
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-credentials`,
+      { cache: "no-store" },
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load agent credentials");
+    renderAgentsDrawer({ credentials: data.credentials || [] });
+  } catch (err) {
+    renderAgentsDrawer({ credentials: [], error: err.message });
+  }
+}
+
+async function createAgentSetup(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = document.getElementById("agent-label");
+  const label = input.value.trim();
+  if (!label) return;
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-credentials`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ label }),
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not create agent credential");
+    const url = data.provision && data.provision.setup && data.provision.setup.url;
+    if (!url) throw new Error("Setup link was not returned");
+    // Reload the list so the new credential appears under "Agent credentials".
+    const listResponse = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-credentials`,
+      { cache: "no-store" },
+    );
+    const listData = await listResponse.json();
+    renderAgentsDrawer({ createdUrl: url, credentials: listData.credentials || [] });
+    input.value = "";
+  } catch (err) {
+    renderAgentsDrawer({ credentials: [], error: err.message });
+  }
+}
+
+async function copyAgentSetupLink() {
+  if (!lastCreatedSetupUrl) return;
+  try {
+    await navigator.clipboard.writeText(lastCreatedSetupUrl);
+  } catch {
+    // Clipboard may be unavailable; fall back to a selectable text input.
+  }
+}
+
+async function revokeAgentCredential(id) {
+  try {
+    const response = await fetch(
+      `/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-credentials/${encodeURIComponent(id)}/revoke`,
+      { method: "POST", headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Could not revoke agent credential");
+    }
+    await loadAgentsDrawer();
+  } catch (err) {
+    renderAgentsDrawer({ credentials: [], error: err.message });
+  }
+}
+
+document.querySelector("#agents-button")?.addEventListener("click", loadAgentsDrawer);
+
+
 // Full portable export. Fetches the untruncated dump (human-session-authed)
 // and saves it as a JSON file on the user's machine.
 document.querySelector("#export-button")?.addEventListener("click", async () => {

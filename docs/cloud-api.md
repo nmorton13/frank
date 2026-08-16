@@ -53,11 +53,25 @@ The private dashboard and human API require the `frank_session` cookie. Ownershi
 | `GET` | `/w/{workspaceId}` | Private dashboard. |
 | `GET` | `/w/{workspaceId}/projects/{name}/entries` | Private project history. |
 | `PATCH` | `/v1/workspaces/{workspaceId}/entries/{entryId}/close` | Same-origin open-loop completion. |
+| `POST` | `/v1/workspaces/{workspaceId}/agent-credentials` | Same-origin mint a new agent credential; returns a single-use setup link. |
+| `GET` | `/v1/workspaces/{workspaceId}/agent-credentials` | Same-origin list agent credentials (label, prefix, status — never the token). |
 | `POST` | `/v1/workspaces/{workspaceId}/agent-credentials/{credentialId}/revoke` | Same-origin agent revocation. |
 | `GET` | `/v1/workspaces/{workspaceId}/export` | Bounded export with per-collection `truncated` flags. |
 | `GET` | `/v1/workspaces/{workspaceId}/export?full=1` | Full untruncated portable dump (agent bearer read scope, or owner human session). |
 
 No workspace route accepts a token/session belonging only to another workspace owner. One verified user may own up to the configured workspace ceiling.
+
+## Multi-agent provisioning
+
+A claimed workspace can have many agents writing to it concurrently, each with its own credential and label. From the dashboard, click **Agents** to mint a new credential, list existing ones (label, prefix, status — never the token), and revoke any credential individually without affecting the others. Minting and listing require an owner session and a same-origin request; revocation uses the `POST …/agent-credentials/{id}/revoke` route above.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/v1/workspaces/{workspaceId}/agent-credentials` | Owner mints a credential (label required). Returns `{provision:{credential:{id,label,prefix,scopes},setup:{id,token,prefix,expiresAt,url}}}` — the setup `url` is a **single-use** link shown once. |
+| `GET` | `/v1/workspaces/{workspaceId}/agent-credentials` | Owner lists credentials `{credentials:[{id,label,prefix,scopes,status,lastUsedAt,createdAt}]}`. Never returns a token. |
+| `GET` | `/a/{setupToken}` | **Public, agent-facing.** Redeem a setup link once → returns `{base,workspaceId,credentialId,token,prefix,label,scopes}`. The write token is never stored; it is derived at redeem. Second redeem (or expired/revoked) → 410. |
+
+Setup links are short-lived (60 minutes) and single-use. The provisioned write credential is long-lived until revoked. Each agent should persist its own `FRANK_PROFILE` (see the skill) so its future helper calls load the right credential — never set it in a shared global shell file.
 
 ## Share API
 

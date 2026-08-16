@@ -150,6 +150,9 @@ frank-cloud-post.sh project inactive "Project"
 frank-cloud-post.sh bootstrap "My Workspace" "America/Chicago" "my-agent"
 frank-cloud-post.sh bootstrap "My Workspace" "America/Chicago" "my-agent" "owner@example.com"
 
+# Redeem a dashboard 'Add agent' setup link (single-use, short-lived) into frankrc
+frank-cloud-post.sh redeem "https://frankagent.dev/a/frank_setup_..."
+
 # Connectivity
 frank-cloud-post.sh remote-check   # verify base URL + token without writing
 frank-cloud-post.sh projects --limit 100 --offset 0
@@ -278,6 +281,12 @@ POST /v1/workspaces/{ws}/projects/merge          {fromNameOrAlias, toNameOrAlias
 POST /v1/workspaces/{ws}/projects/archive        {nameOrAlias}
 POST /v1/workspaces/{ws}/projects/inactive       {nameOrAlias}
 PATCH /v1/workspaces/{ws}/entries/{id}/close      close an open todo/blocker (agent bearer or human session)
+
+Agent credential provisioning (owner session; same-origin):
+POST /v1/workspaces/{ws}/agent-credentials         mint a credential -> returns a single-use setup link (201)
+GET  /v1/workspaces/{ws}/agent-credentials         list credentials (label, prefix, status, never the token)
+POST /v1/workspaces/{ws}/agent-credentials/{id}/revoke   revoke one credential (already existed)
+GET  /a/{setupToken}                               public; redeem a setup link once -> returns the write credential
 ```
 
 Example direct write:
@@ -358,6 +367,26 @@ The response returns workspace, credential, and claim URL. The same key and payl
 - Export `FRANK_CLOUD_BASE`, `FRANK_CLOUD_WS`, and `FRANK_CLOUD_TOKEN` for that workspace, or write them to `~/.config/frank/frankrc` so the helper loads them automatically.
 
 Each workspace is private and isolated. One person's workspace cannot be read by another.
+
+## Connecting additional agents (multi-agent team)
+
+A workspace can have many agents writing to it at the same time — each with its own credential and label, so the audit trail says *which* agent did what. You do not need to bootstrap a new workspace per agent.
+
+1. From the owner dashboard, click **Agents** → enter a label (lowercase letters, digits, `-`, `_`) → **Add agent**.
+2. Frank returns a **single-use setup link** (expires in 60 minutes). Copy it.
+3. Paste it into the new agent, e.g. *"Read `@url:<setup-url>` and set up Frank for me."* The agent (or helper) redeems the link once and receives its own write credential. That's the whole human side.
+
+The **agent** handles the rest automatically:
+- The helper derives the profile from the credential's label — the link for a credential labeled `codex` writes to `~/.config/frank/codex/frankrc`. No `FRANK_PROFILE` to type.
+- The helper's output reminds the agent to persist `FRANK_PROFILE=<label>` **in its own per-agent config** so future runs load the right credential. Each agent's mechanism differs (a per-agent env file, an agent-specific settings key, an agent-specific wrapper), and the agent should use whatever it already has — the point is that the variable must be set *only for that agent's* command invocations.
+- **Never** put `FRANK_PROFILE` in a shared, global location (like the user's `~/.zshrc` or `~/.bashrc`). Every other agent's shell would inherit it and silently use this agent's credential, corrupting the audit trail. Keep it scoped to the single agent.
+- If the agent forgets to persist it, it falls back to the shared `~/.config/frank/frankrc` — still works, but the audit trail may attribute its writes to the shared credential.
+
+4. The owner can see every agent credential in the **Agents** drawer and revoke any of them individually — revoking one agent does not affect the others.
+
+> **Backward compatible:** if `FRANK_PROFILE` is unset and no profile exists for the label, the helper falls back to the shared `~/.config/frank/frankrc`. Existing single-agent setups keep working unchanged.
+
+The setup link is a short-lived capability: after one redeem or 60 minutes it stops working. The write credential it provisions is long-lived until the owner revokes it. Any agent credential with `write` scope can close any open todo/blocker in the workspace, and entries record which credential created them.
 
 ## The four URLs and how access works
 
