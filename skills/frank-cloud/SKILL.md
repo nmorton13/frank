@@ -1,7 +1,7 @@
 ---
 name: frank-cloud
 description: Log work notes, todos, blockers, status to Frank Cloud. Use when the user asks to log work to Frank, update status, mark a todo, or set up Frank. Requires bash + curl + Node.js (Claude Code, Codex, Cursor, Copilot, Hermes).
-version: 2.3.1
+version: 2.3.2
 compatibility: Requires a reachable Frank Cloud API. Bootstrap is public (no token needed). After setup, FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN are required (or auto-loaded from ~/.config/frank/frankrc). Needs bash, curl, and Node.js (used for URL/JSON encoding).
 ---
 
@@ -178,6 +178,15 @@ frank-cloud-post.sh skill-update
 or ask your agent: *"Update the Frank skill."* The helper fetches the latest hosted `SKILL.md` and `frank-cloud-post.sh`, writes them over the local copies, and clears the version cache so the next run reflects the new version.
 
 **Where files land:** the helper detects the skill root (the directory containing `SKILL.md`) whether the helper sits flat next to it (manual / hosted-copy install) or in a `scripts/` subdirectory (skill-manager install such as `~/.hermes/skills/...`). Updates always land in the correct places.
+
+The skill is portable — it works under any agent that can run bash + curl + Node (Hermes, Claude Code, Codex, Cursor, Copilot, and others). The self-update logic lives entirely in the helper script, not in any agent, so the behavior is identical regardless of which agent drives it.
+
+**Skill-root detection:** the helper resolves the skill root by looking for `SKILL.md`:
+- If `SKILL.md` sits next to the helper (hosted-copy / manual install), that directory is the root.
+- If the helper lives in a `scripts/` subdirectory (skill-manager installs such as `~/.hermes/skills/...`), the root is the parent of `scripts/`.
+- Otherwise it falls back to the helper's own directory.
+
+So `skill-update` writes the fetched `SKILL.md` to the true root and the helper in place, in either layout. If you installed Frank's skill in an unusual directory structure and `skill-update` seems to do nothing, check whether the local `SKILL.md` is still old and move it to the directory containing the helper (or the helper's parent, if it is in `scripts/`), then run `skill-update` again.
 
 The bootstrap helper prints its generated retry key to stderr. If the request outcome is uncertain, rerun the same bootstrap command with that value as `FRANK_BOOTSTRAP_IDEM_KEY`.
 

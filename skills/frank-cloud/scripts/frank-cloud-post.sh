@@ -148,7 +148,7 @@ api_post() {
 # at most once per day (cached locally) and print a non-blocking notice to
 # stderr if a newer version is available. The agent/human can then run
 # `skill-update` to refresh. This never blocks or fails a write.
-SKILL_VERSION="2.3.1"
+SKILL_VERSION="2.3.2"
 SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
 SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
 
