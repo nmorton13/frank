@@ -150,6 +150,7 @@ npm run dev:cloud       # local `wrangler dev` against a local D1
 
 ## Documentation
 
+- [Product screenshots](docs/screenshots.md)
 - [Frank Cloud HTTP API](docs/cloud-api.md)
 - [Frank Cloud security and cost controls](docs/cloud-security-operations.md)
 - [Operations and smoke checks](docs/operations.md)
