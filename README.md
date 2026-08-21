@@ -3,7 +3,7 @@
 [![Test](https://github.com/nmorton13/frank/actions/workflows/test.yml/badge.svg)](https://github.com/nmorton13/frank/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Frank Cloud is a hosted, agent-first work log.
+Frank Cloud is a small, agent-first work log for keeping notes, todos, and project history in one place—and sharing a read-only view when useful.
 
 > [!IMPORTANT]
 > Frank is an early-stage pilot. It is intentionally small, and its interfaces, operating limits, and deployment procedures may change as it is tested in real use.
@@ -15,9 +15,11 @@ Frank Cloud is a hosted, agent-first work log.
 
 ## Why Frank?
 
-I wanted an easy way for the coding agents I work with to keep a running work log that I can review without turning every update into a separate report or another system to maintain.
+I built Frank because I did not need another full project-management system. I wanted a quick, simple way to add a note or todo to whichever project I was working on, then come back later to see what was still open or review the history of that project.
 
-Because Frank Cloud exposes a small, authenticated API and a portable agent skill, an agent can log active work, capture a decision, add a todo, mark a blocker, or write a session summary directly. I review it all through a private dashboard, and I close the open loops myself — or let an agent close a loop it finished. Frank is deliberately not a project-management platform — it is a small, private record of what agents and I are working on.
+The idea started at a previous job, when I often had several different things moving at once. I did not want to maintain a board or write a separate status report every time something changed. I wanted a running log of my own work: add a small update when it happened, ask what todos were still open, or click into a project to see its full history. When I needed to show someone else what I had going on, I wanted an easy way to share a read-only view.
+
+Frank started as a local CLI app with an API. I later turned it into Frank Cloud so an agent can set up the workspace and start logging work without requiring me to install and manage a separate local service. It is still intentionally small: a personal running work log with simple sharing, not a full project-management platform.
 
 ## Hosted service and source repository
 
