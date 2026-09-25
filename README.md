@@ -1,4 +1,4 @@
-# Frank Cloud
+# Frank
 
 [![Test](https://github.com/nmorton13/frank/actions/workflows/test.yml/badge.svg)](https://github.com/nmorton13/frank/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
