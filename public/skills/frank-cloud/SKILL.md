@@ -183,6 +183,8 @@ or ask your agent: *"Update the Frank skill."* The helper fetches the latest hos
 
 **Where files land:** the helper detects the skill root (the directory containing `SKILL.md`) whether the helper sits flat next to it (manual / hosted-copy install) or in a `scripts/` subdirectory (skill-manager install such as `~/.hermes/skills/...`). Updates always land in the correct places.
 
+**Upgrading from 2.3.3 or older through a symlink** (e.g. `~/.local/bin/frank-cloud-post.sh`, as the install guide suggests): the update is run by the old helper, which writes the new `SKILL.md` next to the link instead of into the skill directory. The helper itself updates correctly. Run `frank-cloud-post.sh skill-update` once more, or move the stray `~/.local/bin/SKILL.md` into the skill directory. 2.3.4 and later follow the link.
+
 The skill is portable — it works under any agent that can run bash + curl + Node (Hermes, Claude Code, Codex, Cursor, Copilot, and others). The self-update logic lives entirely in the helper script, not in any agent, so the behavior is identical regardless of which agent drives it.
 
 **Skill-root detection:** the helper resolves the skill root by looking for `SKILL.md`:
