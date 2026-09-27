@@ -59,16 +59,16 @@ USAGE
 # where anyone on the network path could read or replace them. Plain http is
 # allowed only for loopback (e.g. `wrangler dev`), which never leaves the machine.
 # Userinfo ("http://127.0.0.1:80@evil.example") is rejected because curl would
-# connect to the host after the "@".
+# connect to the host after the "@". Whitespace, control characters and
+# backslashes never appear in a real base or setup link, so they are refused
+# rather than left to curl's URL parser.
 require_secure_url() {
   local url="$1" what="$2"
-  case "$url" in
-    https://?*) return 0 ;;
-    http://localhost | http://localhost[:/]* | \
-    http://127.0.0.1 | http://127.0.0.1[:/]* | \
-    'http://[::1]' | 'http://[::1]'[:/]*)
-      [[ "$url" != *@* ]] && return 0 ;;
-  esac
+  local loopback='^http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?(/[^@]*)?$'
+  if [[ "$url" != *[[:space:][:cntrl:]\\]* ]]; then
+    [[ "$url" =~ ^https://. ]] && return 0
+    [[ "$url" =~ $loopback ]] && return 0
+  fi
   echo "frank-cloud: ${what} must use https:// (plain http is only allowed for localhost)" >&2
   exit 1
 }
@@ -134,12 +134,29 @@ if [[ "$TYPE" == "redeem" ]]; then
     *) SETUP_URL="$URL" ;;
   esac
   require_secure_url "$SETUP_URL" "The setup link"
+  # The credential is saved against FRANK_CLOUD_BASE, so the link must come from
+  # that same Frank; a link to any other host could hand back a credential (and
+  # frankrc contents) that the base never issued.
+  case "$SETUP_URL" in
+    "$BASE"/a/?*) ;;
+    *)
+      echo "frank-cloud: the setup link must be on FRANK_CLOUD_BASE (${BASE}/a/...)" >&2
+      exit 1
+      ;;
+  esac
   RESPONSE="$(curl -fsS "$SETUP_URL" -H 'Accept: application/json')"
   WS="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.workspaceId||""));')"
   TOKEN="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.token||""));')"
   LABEL="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.label||""));')"
   if [[ -z "$WS" || -z "$TOKEN" ]]; then
     echo "Redeem failed: setup link did not return a credential (it may already be used or expired)" >&2
+    exit 1
+  fi
+  # These values end up in a sourced shell file and a directory name, so accept
+  # only the shapes Frank issues.
+  if [[ ! "$WS" =~ ^wsp_[A-Za-z0-9-]+$ || ! "$TOKEN" =~ ^frank_agent_[A-Za-z0-9_-]+$ ]] ||
+     [[ -n "$LABEL" && ! "$LABEL" =~ ^[a-z0-9_-]+$ ]]; then
+    echo "Redeem failed: setup link returned an unexpected credential format" >&2
     exit 1
   fi
   # The credential's profile is derived from its label (e.g. label "codex" ->
@@ -153,11 +170,8 @@ if [[ "$TYPE" == "redeem" ]]; then
   RC_DIR="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/${PROFILE}"
   mkdir -p "$RC_DIR"
   umask 077
-  cat > "$RC_DIR/frankrc" <<EOF
-export FRANK_CLOUD_BASE="${BASE}"
-export FRANK_CLOUD_WS="${WS}"
-export FRANK_CLOUD_TOKEN="${TOKEN}"
-EOF
+  printf 'export FRANK_CLOUD_BASE=%q\nexport FRANK_CLOUD_WS=%q\nexport FRANK_CLOUD_TOKEN=%q\n' \
+    "$BASE" "$WS" "$TOKEN" > "$RC_DIR/frankrc"
   printf 'Redeemed. Wrote %s/frankrc (mode 600).\n' "$RC_DIR" >&2
   # Remind the agent to persist its identity for future runs.
   printf 'Set FRANK_PROFILE=%s in this agent'\''s own per-agent config (not a shared global shell file like ~/.zshrc) so future runs load its own credential.\n' "$PROFILE" >&2
