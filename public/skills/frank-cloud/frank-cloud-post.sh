@@ -55,6 +55,24 @@ For all other commands: FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN 
 USAGE
 }
 
+# Refuse to send credentials, setup links, or fetch helper code over plain HTTP,
+# where anyone on the network path could read or replace them. Plain http is
+# allowed only for loopback (e.g. `wrangler dev`), which never leaves the machine.
+# Userinfo ("http://127.0.0.1:80@evil.example") is rejected because curl would
+# connect to the host after the "@".
+require_secure_url() {
+  local url="$1" what="$2"
+  case "$url" in
+    https://?*) return 0 ;;
+    http://localhost | http://localhost[:/]* | \
+    http://127.0.0.1 | http://127.0.0.1[:/]* | \
+    'http://[::1]' | 'http://[::1]'[:/]*)
+      [[ "$url" != *@* ]] && return 0 ;;
+  esac
+  echo "frank-cloud: ${what} must use https:// (plain http is only allowed for localhost)" >&2
+  exit 1
+}
+
 TYPE="${1:-}"
 if [[ -z "$TYPE" ]]; then usage; exit 2; fi
 shift
@@ -66,6 +84,7 @@ if [[ "$TYPE" == "bootstrap" ]]; then
     echo "FRANK_CLOUD_BASE must be set" >&2
     exit 1
   fi
+  require_secure_url "$BASE" "FRANK_CLOUD_BASE"
   BASE="${BASE%/}"
   DISP="${1:-}"
   TIMEZ="${2:-UTC}"
@@ -100,6 +119,7 @@ if [[ "$TYPE" == "redeem" ]]; then
     echo "FRANK_CLOUD_BASE must be set" >&2
     exit 1
   fi
+  require_secure_url "$BASE" "FRANK_CLOUD_BASE"
   BASE="${BASE%/}"
   URL="${1:-}"
   if [[ -z "$URL" ]]; then
@@ -107,7 +127,14 @@ if [[ "$TYPE" == "redeem" ]]; then
     exit 2
   fi
   # The URL is either the full https://host/a/token or just the /a/token path.
-  RESPONSE="$(curl -fsS "${URL#${BASE}}" -H 'Accept: application/json')"
+  # A bare path is resolved against FRANK_CLOUD_BASE; either way the request
+  # returns the write credential, so it must stay on HTTPS.
+  case "$URL" in
+    /*) SETUP_URL="${BASE}${URL}" ;;
+    *) SETUP_URL="$URL" ;;
+  esac
+  require_secure_url "$SETUP_URL" "The setup link"
+  RESPONSE="$(curl -fsS "$SETUP_URL" -H 'Accept: application/json')"
   WS="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.workspaceId||""));')"
   TOKEN="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.token||""));')"
   LABEL="$(printf '%s' "$RESPONSE" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(d.label||""));')"
@@ -143,6 +170,9 @@ if [[ -z "${FRANK_CLOUD_BASE:-}" || -z "${FRANK_CLOUD_WS:-}" || -z "${FRANK_CLOU
   echo "FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN must all be set" >&2
   exit 1
 fi
+
+# Every later command sends the bearer token or (skill-update) installs code from BASE.
+require_secure_url "$FRANK_CLOUD_BASE" "FRANK_CLOUD_BASE"
 
 BASE="${FRANK_CLOUD_BASE%/}"
 WS="${FRANK_CLOUD_WS}"
@@ -203,7 +233,7 @@ api_post() {
 # at most once per day (cached locally) and print a non-blocking notice to
 # stderr if a newer version is available. The agent/human can then run
 # `skill-update` to refresh. This never blocks or fails a write.
-SKILL_VERSION="2.3.2"
+SKILL_VERSION="2.3.3"
 SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
 SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
 
