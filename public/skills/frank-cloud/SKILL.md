@@ -1,7 +1,7 @@
 ---
 name: frank-cloud
 description: Log work notes, todos, blockers, status to Frank Cloud. Use when the user asks to log work to Frank, update status, mark a todo, or set up Frank. Requires bash + curl + Node.js (Claude Code, Codex, Cursor, Copilot, Hermes).
-version: 2.3.2
+version: 2.3.3
 compatibility: Requires a reachable Frank Cloud API. Bootstrap is public (no token needed). After setup, FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN are required (or auto-loaded from ~/.config/frank/frankrc). Needs bash, curl, and Node.js (used for URL/JSON encoding).
 ---
 
@@ -150,7 +150,8 @@ frank-cloud-post.sh project inactive "Project"
 frank-cloud-post.sh bootstrap "My Workspace" "America/Chicago" "my-agent"
 frank-cloud-post.sh bootstrap "My Workspace" "America/Chicago" "my-agent" "owner@example.com"
 
-# Redeem a dashboard 'Add agent' setup link (single-use, short-lived) into frankrc
+# Redeem a dashboard 'Add agent' setup link (single-use, short-lived) into frankrc.
+# FRANK_CLOUD_BASE must be set, and the link must be on that same base.
 frank-cloud-post.sh redeem "https://frankagent.dev/a/frank_setup_..."
 
 # Connectivity
@@ -408,6 +409,8 @@ Access model:
 ## Notes
 
 - The token is a capability credential. Keep it private; it grants read+write to its workspace.
+- The helper only talks to `https://` bases (and setup links). Plain `http://` is refused before any request, except for loopback (`localhost`, `127.0.0.1`, `[::1]`) when running a local Worker.
+- `redeem` only accepts a setup link on `FRANK_CLOUD_BASE` (`<base>/a/...` or a bare `/a/...` path), and only writes a response shaped like a real Frank credential to `frankrc`.
 - No `Bootstrap-Token` or account is required for the public bootstrap path.
 - Rate limits apply to bootstrap, public authentication requests, email delivery, agent credentials, workspace traffic, and writes. Workspace entry/project cardinality is also bounded.
 - Public signup has a lower live-workspace ceiling than the absolute ceiling so operator capacity remains available.

@@ -59,7 +59,148 @@ function runHelperFails(args, env = {}) {
   }
 }
 
+// Runs the helper with a fake curl that records its arguments and fails, in an
+// empty HOME so no real frankrc is loaded. Returns the exit code, stderr, and
+// the recorded curl calls. Never touches the network.
+function runWithFakeCurl(args, env) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "frank-guard-"));
+  try {
+    const bin = path.join(dir, "bin");
+    const log = path.join(dir, "curl.log");
+    fs.mkdirSync(bin);
+    fs.mkdirSync(path.join(dir, "home"));
+    // With FAKE_CURL_BODY set, curl "succeeds" and prints it (a fake server response).
+    fs.writeFileSync(
+      path.join(bin, "curl"),
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_CURL_LOG"\n[ -n "$FAKE_CURL_BODY" ] && { printf "%s" "$FAKE_CURL_BODY"; exit 0; }\nexit 7\n',
+      { mode: 0o755 },
+    );
+    let code = 0;
+    let stderr = "";
+    try {
+      execFileSync(HELPER, args, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          HOME: path.join(dir, "home"),
+          XDG_CONFIG_HOME: path.join(dir, "home", ".config"),
+          FAKE_CURL_LOG: log,
+          FRANK_CLOUD_WS: "wsp_guard",
+          FRANK_CLOUD_TOKEN: "frank_agent_guard",
+          ...env,
+        },
+      });
+    } catch (err) {
+      code = err.status;
+      stderr = String(err.stderr || "");
+    }
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n") : [];
+    // Every file written under the fake HOME, relative to it (e.g. redeem's frankrc).
+    const home = path.join(dir, "home");
+    const written = {};
+    for (const rel of fs.readdirSync(home, { recursive: true })) {
+      const file = path.join(home, rel);
+      if (fs.statSync(file).isFile()) written[rel] = fs.readFileSync(file, "utf8");
+    }
+    return { code, stderr, calls, written };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function testHttpsGuard() {
+  // Plain http, look-alike hosts, and userinfo tricks are refused before curl runs.
+  const refused = [
+    [["status-view"], "http://frank.example"],
+    [["skill-update"], "http://frank.example"],
+    [["bootstrap", "Guard"], "http://frank.example"],
+    [["redeem", "/a/frank_setup_x"], "http://frank.example"],
+    [["status-view"], "http://127.0.0.1:8789@evil.example"],
+    [["status-view"], "http://localhost.evil.example"],
+    [["status-view"], "http://127.0.0.1.evil.example"],
+    [["status-view"], "ftp://frank.example"],
+    [["status-view"], "HTTP://frank.example"],
+    [["status-view"], "http://[::1].evil.example"],
+    [["status-view"], "http://localhost:evil.example"],
+    [["status-view"], "http://localhost\\@evil.example"],
+    [["status-view"], "http://127.0.0.1:8789\\evil.example"],
+    [["status-view"], "http://localhost/\nhttp://evil.example"],
+    [["status-view"], "https://frank.example\n"],
+    [["status-view"], " https://frank.example"],
+    [["redeem", "/a/frank_setup_x"], "http://localhost/\nhttp://evil.example"],
+  ];
+  for (const [args, base] of refused) {
+    const r = runWithFakeCurl(args, { FRANK_CLOUD_BASE: base });
+    assert.strictEqual(r.code, 1, `${args[0]} with ${base} should exit 1`);
+    assert.match(r.stderr, /must use https:\/\//, `${args[0]} with ${base} should explain the refusal`);
+    assert.deepStrictEqual(r.calls, [], `${args[0]} with ${base} must not reach curl`);
+  }
+  // A setup link on plain http is refused even when the base is https.
+  const link = runWithFakeCurl(["redeem", "http://evil.example/a/frank_setup_x"], { FRANK_CLOUD_BASE: "https://frank.example" });
+  assert.strictEqual(link.code, 1, "http setup link should be refused");
+  assert.deepStrictEqual(link.calls, [], "http setup link must not reach curl");
+
+  // https and loopback http pass the guard (the fake curl then fails the command).
+  for (const base of ["https://frank.example", "http://127.0.0.1:9", "http://localhost:9/", "http://[::1]:9"]) {
+    const r = runWithFakeCurl(["status-view"], { FRANK_CLOUD_BASE: base });
+    assert.strictEqual(r.calls.length, 1, `${base} should reach curl`);
+  }
+  // redeem resolves a bare setup path against the base instead of passing "/a/…" to curl.
+  const redeem = runWithFakeCurl(["redeem", "/a/frank_setup_x"], { FRANK_CLOUD_BASE: "https://frank.example/" });
+  assert.match(redeem.calls[0] || "", /https:\/\/frank\.example\/a\/frank_setup_x/, "redeem should request the full setup URL");
+  const full = runWithFakeCurl(["redeem", "https://frank.example/a/frank_setup_y"], { FRANK_CLOUD_BASE: "https://frank.example" });
+  assert.match(full.calls[0] || "", /https:\/\/frank\.example\/a\/frank_setup_y/, "redeem should request a full setup link as given");
+
+  // redeem only accepts setup links on FRANK_CLOUD_BASE, including over https.
+  for (const url of [
+    "https://evil.example/a/frank_setup_x",
+    "https://frank.example.evil.example/a/frank_setup_x",
+    "https://frank.example@evil.example/a/frank_setup_x",
+    "https://frank.example/v1/workspaces",
+  ]) {
+    const r = runWithFakeCurl(["redeem", url], { FRANK_CLOUD_BASE: "https://frank.example" });
+    assert.strictEqual(r.code, 1, `redeem ${url} should exit 1`);
+    assert.match(r.stderr, /must be on FRANK_CLOUD_BASE/, `redeem ${url} should explain the refusal`);
+    assert.deepStrictEqual(r.calls, [], `redeem ${url} must not reach curl`);
+  }
+
+  // A well-formed response is written to the label's frankrc, and sourcing it gives the values back.
+  const good = { workspaceId: "wsp_0b1c2d3e-4f50-4a61-8b72-93a4b5c6d7e8", token: "frank_agent_Ab-9_z", label: "codex" };
+  const ok = runWithFakeCurl(["redeem", "/a/frank_setup_ok"], {
+    FRANK_CLOUD_BASE: "https://frank.example/",
+    FAKE_CURL_BODY: JSON.stringify(good),
+  });
+  assert.strictEqual(ok.code, 0, `redeem with a good response should succeed: ${ok.stderr}`);
+  const rc = ok.written[path.join(".config", "frank", "codex", "frankrc")];
+  assert.ok(rc, "redeem should write .config/frank/codex/frankrc");
+  const sourced = execFileSync("bash", ["-c", 'eval "$1"; printf "%s|%s|%s" "$FRANK_CLOUD_BASE" "$FRANK_CLOUD_WS" "$FRANK_CLOUD_TOKEN"', "_", rc], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH },
+  });
+  assert.strictEqual(sourced, `https://frank.example|${good.workspaceId}|${good.token}`, "frankrc should round-trip");
+
+  // A response that would inject shell into frankrc or escape the config dir is refused, and nothing is written.
+  for (const bad of [
+    { ...good, workspaceId: 'wsp_x"; touch /tmp/pwned; "' },
+    { ...good, token: "frank_agent_$(id)" },
+    { ...good, token: "frank_agent_x\nexport PATH=/tmp" },
+    { ...good, label: "../../.ssh" },
+    { ...good, label: "Codex Agent" },
+  ]) {
+    const r = runWithFakeCurl(["redeem", "/a/frank_setup_bad"], {
+      FRANK_CLOUD_BASE: "https://frank.example",
+      FAKE_CURL_BODY: JSON.stringify(bad),
+    });
+    assert.strictEqual(r.code, 1, `redeem should refuse ${JSON.stringify(bad)}`);
+    assert.match(r.stderr, /unexpected credential format/, `redeem should explain refusing ${JSON.stringify(bad)}`);
+    assert.deepStrictEqual(r.written, {}, `redeem must not write anything for ${JSON.stringify(bad)}`);
+  }
+}
+
 async function main() {
+  testHttpsGuard();
+
   const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), "frank-helper-"));
   // Apply D1 migrations to a fresh local persistence dir so the worker has the
   // bootstrap_quota table without depending on committed .wrangler state.
