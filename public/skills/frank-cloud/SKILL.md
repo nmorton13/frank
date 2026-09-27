@@ -1,7 +1,7 @@
 ---
 name: frank-cloud
 description: Log work notes, todos, blockers, status to Frank Cloud. Use when the user asks to log work to Frank, update status, mark a todo, or set up Frank. Requires bash + curl + Node.js (Claude Code, Codex, Cursor, Copilot, Hermes).
-version: 2.3.3
+version: 2.3.4
 compatibility: Requires a reachable Frank Cloud API. Bootstrap is public (no token needed). After setup, FRANK_CLOUD_BASE, FRANK_CLOUD_WS, and FRANK_CLOUD_TOKEN are required (or auto-loaded from ~/.config/frank/frankrc). Needs bash, curl, and Node.js (used for URL/JSON encoding).
 ---
 

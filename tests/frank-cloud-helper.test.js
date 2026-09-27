@@ -198,8 +198,76 @@ function testHttpsGuard() {
   }
 }
 
+// skill-update run through a symlink (the install guide links the helper from
+// ~/.local/bin) must update the real skill files and leave the link's
+// directory alone. Covers the flat and scripts/ layouts, relative and absolute
+// links, and a link under another name.
+function testSkillUpdateThroughSymlink() {
+  const layouts = [
+    { name: "flat", helperRel: "frank-cloud-post.sh" },
+    { name: "scripts", helperRel: path.join("scripts", "frank-cloud-post.sh") },
+  ];
+  for (const layout of layouts) {
+    for (const [linkName, relative] of [["frank-cloud-post.sh", true], ["frank", false]]) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "frank-update-"));
+      try {
+        const skill = path.join(dir, "skill");
+        const helper = path.join(skill, layout.helperRel);
+        const bin = path.join(dir, "bin");
+        const fakeBin = path.join(dir, "fake");
+        fs.mkdirSync(path.dirname(helper), { recursive: true });
+        fs.mkdirSync(bin);
+        fs.mkdirSync(fakeBin);
+        fs.mkdirSync(path.join(dir, "home"));
+        fs.writeFileSync(path.join(skill, "SKILL.md"), "---\nversion: 0.0.1\n---\n");
+        fs.copyFileSync(HELPER, helper);
+        fs.chmodSync(helper, 0o755);
+        const link = path.join(bin, linkName);
+        fs.symlinkSync(relative ? path.relative(bin, helper) : helper, link);
+        // Fake curl: serve a new SKILL.md or helper to whatever `-o` names.
+        fs.writeFileSync(
+          path.join(fakeBin, "curl"),
+          [
+            "#!/bin/sh",
+            'out=""; url=""',
+            'while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift ;; http*) url="$1" ;; esac; shift; done',
+            '[ -n "$out" ] || exit 7',
+            'case "$url" in',
+            '  */SKILL.md) printf -- "---\\nversion: 9.9.9\\n---\\n" > "$out" ;;',
+            '  */frank-cloud-post.sh) printf "#!/usr/bin/env bash\\n# updated helper\\n" > "$out" ;;',
+            "  *) exit 7 ;;",
+            "esac",
+          ].join("\n") + "\n",
+          { mode: 0o755 },
+        );
+        const out = execFileSync(linkName, ["skill-update"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            PATH: `${bin}:${fakeBin}:${process.env.PATH}`,
+            HOME: path.join(dir, "home"),
+            XDG_CONFIG_HOME: path.join(dir, "home", ".config"),
+            FRANK_CLOUD_BASE: "https://frank.example",
+            FRANK_CLOUD_WS: "wsp_update",
+            FRANK_CLOUD_TOKEN: "frank_agent_update",
+          },
+        });
+        const label = `${layout.name} layout via ${relative ? "relative" : "absolute"} link ${linkName}`;
+        assert.match(out, /skill updated to 9\.9\.9/, `${label}: should report the new version`);
+        assert.deepStrictEqual(fs.readdirSync(bin), [linkName], `${label}: must not write into the link's directory`);
+        assert.ok(fs.lstatSync(link).isSymbolicLink(), `${label}: the link should stay a link`);
+        assert.match(fs.readFileSync(path.join(skill, "SKILL.md"), "utf8"), /version: 9\.9\.9/, `${label}: SKILL.md updated`);
+        assert.match(fs.readFileSync(helper, "utf8"), /# updated helper/, `${label}: real helper updated`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  }
+}
+
 async function main() {
   testHttpsGuard();
+  testSkillUpdateThroughSymlink();
 
   const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), "frank-helper-"));
   // Apply D1 migrations to a fresh local persistence dir so the worker has the

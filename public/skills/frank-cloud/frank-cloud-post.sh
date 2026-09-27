@@ -247,20 +247,27 @@ api_post() {
 # at most once per day (cached locally) and print a non-blocking notice to
 # stderr if a newer version is available. The agent/human can then run
 # `skill-update` to refresh. This never blocks or fails a write.
-SKILL_VERSION="2.3.3"
+SKILL_VERSION="2.3.4"
 SKILL_CACHE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/frank/.skill-version"
 SKILL_UPDATE_INTERVAL_SECONDS=86400  # 24h
 
 # Resolve this helper's own directory (works whether invoked by path or via $PATH).
-_skill_dir() {
-  local self="$0"
-  if [[ "$self" == /* ]]; then
-    dirname "$self"
-  else
-    local found
-    found="$(command -v "$self" 2>/dev/null || true)"
-    if [[ -n "$found" ]]; then dirname "$found"; else dirname "$self"; fi
+# The helper's real file. The install guide links it from ~/.local/bin, so
+# symlinks are followed (by hand: `readlink -f` is missing on older macOS);
+# otherwise skill-update would write into the link's directory.
+_helper_path() {
+  local self="$0" target
+  if [[ "$self" != */* && ! -f "$self" ]]; then
+    self="$(command -v "$self" 2>/dev/null || printf '%s' "$self")"
   fi
+  while [[ -L "$self" ]]; do
+    target="$(readlink "$self")"
+    case "$target" in
+      /*) self="$target" ;;
+      *) self="$(dirname "$self")/$target" ;;
+    esac
+  done
+  printf '%s\n' "$self"
 }
 
 # Fetch the hosted skill version string (e.g. "2.1.0") or empty on failure.
@@ -291,8 +298,8 @@ maybe_check_skill_update() {
 # Fetch the latest hosted skill + helper and overwrite the local copies.
 skill_update() {
   local script_dir helper_path skill_root
-  script_dir="$(_skill_dir)"
-  helper_path="$script_dir/frank-cloud-post.sh"
+  helper_path="$(_helper_path)"
+  script_dir="$(dirname "$helper_path")"
   # The skill root is the directory that contains SKILL.md. When the helper
   # sits flat next to SKILL.md (hosted-copy / manual install) that is
   # `script_dir`; when it is in a `scripts/` subdir (skill-manager install,
