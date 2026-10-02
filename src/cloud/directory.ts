@@ -1256,6 +1256,10 @@ export async function createAgentCredential(
 
   const credentialId = newId("credential");
   const setup = await newOpaqueToken("setup");
+  // Placeholder credential hash until redeem. It must not be the setup token's
+  // hash: requireAgent authenticates by token_hash, so that would make the
+  // setup token itself a bearer credential that outlives its TTL if unredeemed.
+  const placeholder = await newOpaqueToken("agent");
   const setupId = newId("setup");
   const scopes = ["read", "write"];
   const expiresAt = new Date(Date.now() + AGENT_SETUP_TTL_MS).toISOString();
@@ -1280,9 +1284,9 @@ export async function createAgentCredential(
       credentialId,
       workspaceId,
       // Placeholder hash — the real write-credential hash is written at redeem
-      // time. Using the setup token's own hash keeps it unique (token_hash has
-      // a global UNIQUE constraint) without exposing any secret material.
-      setup.hash,
+      // time. A discarded random token keeps it unique (token_hash has a global
+      // UNIQUE constraint) and matches no bearer value anyone holds.
+      placeholder.hash,
       `pending-${setup.prefix}`,
       label,
       JSON.stringify(scopes),

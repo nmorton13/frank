@@ -147,6 +147,32 @@ describe("Frank Cloud multi-agent provisioning", () => {
     expect(second.status).toBe(410);
   });
 
+  it("never accepts the setup token itself as an agent bearer credential", async () => {
+    const workspace = await bootstrap("multi-agent-setup-bearer");
+    const cookie = await ownerSession(workspace);
+    const minted = await mintAgent(workspace, cookie, "codex");
+    const entries = `https://frank.test/v1/workspaces/${workspace.workspace.id}/entries`;
+    const asSetupToken = { authorization: `Bearer ${minted.provision.setup.token}` };
+
+    const read = await exports.default.fetch(entries, { headers: asSetupToken });
+    expect(read.status).toBe(401);
+
+    const write = await exports.default.fetch(entries, {
+      method: "POST",
+      headers: {
+        ...asSetupToken,
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({ type: "note", text: "should be rejected", source: "test" }),
+    });
+    expect(write.status).toBe(401);
+
+    // The link still redeems normally after the rejected bearer attempts.
+    const redeem = await exports.default.fetch(minted.provision.setup.url);
+    expect(redeem.status).toBe(200);
+  });
+
   it("lists credentials (without tokens) and lets the owner revoke one", async () => {
     const workspace = await bootstrap("multi-agent-list");
     const cookie = await ownerSession(workspace);
